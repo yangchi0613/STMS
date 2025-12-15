@@ -2,10 +2,15 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'screens/login_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 
 void main() {
-  runApp(const STMSApp());
+  initializeDateFormatting('zh_TW', null).then((_) {
+    Intl.defaultLocale = 'zh_TW';
+    runApp(const STMSApp());
+  });
 }
 
 class STMSApp extends StatelessWidget {
@@ -26,6 +31,7 @@ class STMSApp extends StatelessWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: [Locale('zh', 'TW'), Locale('en', 'US')],
+      locale: Locale('zh', 'TW'),
       home: LoginScreen(),
     );
   }

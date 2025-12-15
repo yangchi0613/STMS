@@ -83,9 +83,7 @@ class _HomeScreenState extends State<HomeScreen> {
         middle: const Text('我的事項'),
         leading: CupertinoButton(
           padding: EdgeInsets.zero,
-          child: const CircleAvatar(
-            child: Icon(CupertinoIcons.person),
-          ),
+          child: const CircleAvatar(child: Icon(CupertinoIcons.person)),
           onPressed: () {
             Navigator.of(context).push(
               CupertinoPageRoute(builder: (context) => const ProfileScreen()),
@@ -100,7 +98,9 @@ class _HomeScreenState extends State<HomeScreen> {
               child: const Icon(CupertinoIcons.settings),
               onPressed: () {
                 Navigator.of(context).push(
-                  CupertinoPageRoute(builder: (context) => const SettingsScreen()),
+                  CupertinoPageRoute(
+                    builder: (context) => const SettingsScreen(),
+                  ),
                 );
               },
             ),
@@ -126,8 +126,9 @@ class _HomeScreenState extends State<HomeScreen> {
               });
             },
             children: categories.map((cat) {
-              List<Task> catTasks =
-                  tasks.where((t) => t.category == cat).toList();
+              List<Task> catTasks = tasks
+                  .where((t) => t.category == cat)
+                  .toList();
               catTasks.sort((a, b) => a.dueTime.compareTo(b.dueTime));
 
               return Container(
@@ -256,7 +257,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   Text(
-                    DateFormat('MM/dd HH:mm').format(task.dueTime),
+                    DateFormat('M月d日 HH:mm', 'zh_TW').format(task.dueTime),
                     style: TextStyle(
                       fontSize: 12,
                       color: task.priority == 'High'
@@ -275,8 +276,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // [分頁 2] 行事曆
   Widget _buildCalendarTab() {
-    List<Task> dailyTasks =
-        tasks.where((t) => isSameDay(t.dueTime, _selectedDay)).toList();
+    List<Task> dailyTasks = tasks
+        .where((t) => isSameDay(t.dueTime, _selectedDay))
+        .toList();
 
     return CupertinoPageScaffold(
       navigationBar: const CupertinoNavigationBar(middle: Text('行事曆')),
@@ -298,6 +300,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Material(
                 color: Colors.transparent,
                 child: TableCalendar(
+                  locale: 'zh_TW',
                   firstDay: DateTime.utc(2020, 1, 1),
                   lastDay: DateTime.utc(2030, 12, 31),
                   focusedDay: _focusedDay,
@@ -346,7 +349,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: const EdgeInsets.all(20),
                   children: [
                     Text(
-                      "${DateFormat('MM/dd').format(_selectedDay)} 待辦事項",
+                      "${DateFormat('M月d日', 'zh_TW').format(_selectedDay)} 待辦事項",
                       style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -522,22 +525,19 @@ class _HomeScreenState extends State<HomeScreen> {
                         selectedDate.year == DateTime.now().year &&
                                 selectedDate.day == DateTime.now().day
                             ? "今天"
-                            : DateFormat('MM/dd').format(selectedDate),
-                        () {
-                          showCupertinoModalPopup(
+                            : DateFormat('M月d日', 'zh_TW').format(selectedDate),
+                        () async {
+                          final DateTime? picked = await showDatePicker(
                             context: context,
-                            builder: (context) => Container(
-                              height: 250,
-                              color: Colors.white,
-                              child: Material(
-                                child: CupertinoDatePicker(
-                                  initialDateTime: selectedDate,
-                                  onDateTimeChanged: (val) =>
-                                      setModalState(() => selectedDate = val),
-                                ),
-                              ),
-                            ),
+                            initialDate: selectedDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2030),
                           );
+                          if (picked != null && picked != selectedDate) {
+                            setModalState(() {
+                              selectedDate = picked;
+                            });
+                          }
                         },
                       ),
                       _buildCircleBtn(
