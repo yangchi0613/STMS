@@ -1,10 +1,20 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+import '../theme_manager.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
   @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  @override
   Widget build(BuildContext context) {
+    //
+    final isDarkMode = themeManager.value == ThemeMode.dark;
+
     return CupertinoPageScaffold(
       navigationBar: const CupertinoNavigationBar(
         middle: Text('設定'),
@@ -33,10 +43,18 @@ class SettingsScreen extends StatelessWidget {
               header: const Text('外觀'),
               children: [
                 CupertinoListTile(
-                  title: const Text('主題'),
-                  leading: const Icon(CupertinoIcons.paintbrush),
-                  trailing: const Icon(CupertinoIcons.right_chevron),
-                  onTap: () {},
+                  title: const Text('深色模式'),
+                  leading: const Icon(CupertinoIcons.moon_stars),
+                  trailing: CupertinoSwitch(
+                    value: isDarkMode,
+                    onChanged: (bool value) {
+                      setState(() {
+                        themeManager.setThemeMode(
+                          value ? ThemeMode.dark : ThemeMode.light,
+                        );
+                      });
+                    },
+                  ),
                 ),
               ],
             ),

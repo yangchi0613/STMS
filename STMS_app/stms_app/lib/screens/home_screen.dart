@@ -131,15 +131,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   .toList();
               catTasks.sort((a, b) => a.dueTime.compareTo(b.dueTime));
 
+              final isDarkMode = CupertinoTheme.of(context).brightness == Brightness.dark;
+
               return Container(
                 key: ValueKey(cat),
                 margin: const EdgeInsets.only(bottom: 20),
                 decoration: BoxDecoration(
-                  color: CupertinoColors.white,
+                  color: isDarkMode ? CupertinoColors.darkBackgroundGray : CupertinoColors.white,
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: isDarkMode ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -279,14 +281,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      task.title,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        color: CupertinoColors.black,
-                      ),
-                    ),
-                    Text(
+                                      Text(
+                                        task.title,
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: CupertinoTheme.of(context).textTheme.textStyle.color,
+                                        ),
+                                      ),                    Text(
                       DateFormat('M月d日 HH:mm', 'zh_TW').format(task.dueTime),
                       style: TextStyle(
                         fontSize: 12,
@@ -319,11 +320,15 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               margin: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: CupertinoTheme.of(context).brightness == Brightness.dark
+                    ? CupertinoColors.darkBackgroundGray
+                    : Colors.white,
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: CupertinoTheme.of(context).brightness == Brightness.dark
+                        ? Colors.white.withOpacity(0.05)
+                        : Colors.black.withOpacity(0.05),
                     blurRadius: 10,
                   ),
                 ],
@@ -372,9 +377,11 @@ class _HomeScreenState extends State<HomeScreen> {
             Expanded(
               child: Container(
                 width: double.infinity,
-                decoration: const BoxDecoration(
-                  color: CupertinoColors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+                decoration: BoxDecoration(
+                  color: CupertinoTheme.of(context).brightness == Brightness.dark
+                      ? CupertinoColors.darkBackgroundGray
+                      : CupertinoColors.white,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
                 ),
                 child: ListView(
                   padding: const EdgeInsets.all(20),
@@ -417,7 +424,9 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: CupertinoTheme.of(context).brightness == Brightness.dark
+                    ? CupertinoColors.darkBackgroundGray
+                    : Colors.white,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
@@ -485,7 +494,7 @@ class _HomeScreenState extends State<HomeScreen> {
               title,
               style: TextStyle(
                 fontSize: 16,
-                color: isEnabled ? Colors.black : Colors.grey,
+                color: isEnabled ? CupertinoTheme.of(context).textTheme.textStyle.color : Colors.grey,
               ),
             ),
             const Spacer(),
@@ -514,12 +523,13 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (BuildContext context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
+            final isDarkMode = CupertinoTheme.of(context).brightness == Brightness.dark;
             return Container(
               height: 380,
               padding: const EdgeInsets.all(20),
-              decoration: const BoxDecoration(
-                color: CupertinoColors.systemBackground,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+              decoration: BoxDecoration(
+                color: isDarkMode ? CupertinoColors.darkBackgroundGray : CupertinoColors.systemBackground,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -532,7 +542,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       vertical: 5,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.grey[300],
+                      color: CupertinoColors.systemGrey4,
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
