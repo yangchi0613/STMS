@@ -194,81 +194,112 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildTaskItem(Task task) {
-    return GestureDetector(
-      onTap: () async {
-        await Navigator.of(context).push(
-          CupertinoPageRoute(
-            builder: (context) =>
-                TaskDetailPage(task: task, onDelete: () => deleteTask(task.id)),
+    return Dismissible(
+      key: ValueKey(task.id),
+      direction: DismissDirection.startToEnd,
+      onDismissed: (direction) {
+        deleteTask(task.id);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("${task.title} 已刪除"),
+            action: SnackBarAction(
+              label: "復原",
+              onPressed: () {
+                // This is a simplified undo. For a real app, you'd need to
+                // re-insert the task at its original position.
+                setState(() {
+                  tasks.add(task);
+                });
+              },
+            ),
           ),
         );
-        setState(() {});
       },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        decoration: const BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: CupertinoColors.systemGrey6),
-          ),
-          color: Colors.transparent,
+      background: Container(
+        color: CupertinoColors.destructiveRed,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        alignment: Alignment.centerLeft,
+        child: const Icon(
+          CupertinoIcons.delete,
+          color: Colors.white,
         ),
-        child: Row(
-          children: [
-            GestureDetector(
-              onTap: () {
-                showCupertinoDialog(
-                  context: context,
-                  builder: (context) => CupertinoAlertDialog(
-                    title: const Text("完成事項"),
-                    content: const Text("確定事項已完成？"),
-                    actions: [
-                      CupertinoDialogAction(
-                        child: const Text("取消"),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                      CupertinoDialogAction(
-                        isDestructiveAction: true,
-                        child: const Text("確定"),
-                        onPressed: () {
-                          deleteTask(task.id);
-                          Navigator.pop(context);
-                        },
-                      ),
-                    ],
-                  ),
-                );
-              },
-              child: const Icon(
-                CupertinoIcons.circle,
-                color: CupertinoColors.systemGrey,
-                size: 24,
-              ),
+      ),
+      child: GestureDetector(
+        onTap: () async {
+          await Navigator.of(context).push(
+            CupertinoPageRoute(
+              builder: (context) =>
+                  TaskDetailPage(task: task, onDelete: () => deleteTask(task.id)),
             ),
-            const SizedBox(width: 15),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    task.title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      color: CupertinoColors.black,
-                    ),
-                  ),
-                  Text(
-                    DateFormat('M月d日 HH:mm', 'zh_TW').format(task.dueTime),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: task.priority == 'High'
-                          ? CupertinoColors.systemRed
-                          : CupertinoColors.systemGrey,
-                    ),
-                  ),
-                ],
-              ),
+          );
+          setState(() {});
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          decoration: const BoxDecoration(
+            border: Border(
+              bottom: BorderSide(color: CupertinoColors.systemGrey6),
             ),
-          ],
+            color: Colors.transparent,
+          ),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: () {
+                  showCupertinoDialog(
+                    context: context,
+                    builder: (context) => CupertinoAlertDialog(
+                      title: const Text("完成事項"),
+                      content: const Text("確定事項已完成？"),
+                      actions: [
+                        CupertinoDialogAction(
+                          child: const Text("取消"),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                        CupertinoDialogAction(
+                          isDestructiveAction: true,
+                          child: const Text("確定"),
+                          onPressed: () {
+                            deleteTask(task.id);
+                            Navigator.pop(context);
+                          },
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                child: const Icon(
+                  CupertinoIcons.circle,
+                  color: CupertinoColors.systemGrey,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 15),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      task.title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: CupertinoColors.black,
+                      ),
+                    ),
+                    Text(
+                      DateFormat('M月d日 HH:mm', 'zh_TW').format(task.dueTime),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: task.priority == 'High'
+                            ? CupertinoColors.systemRed
+                            : CupertinoColors.systemGrey,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
