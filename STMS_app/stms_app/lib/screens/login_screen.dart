@@ -74,17 +74,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: _selectedSegment == 0
                           ? CupertinoColors.activeBlue
                           : CupertinoColors.systemGrey6,
-                      child: SizedBox(
-                        height: 20.0,
-                        child: Center(
-                          child: Text(
-                            '登入',
-                            style: TextStyle(
-                              color: _selectedSegment == 0
-                                  ? CupertinoColors.white
-                                  : CupertinoColors.activeBlue,
-                            ),
-                          ),
+                      child: Text(
+                        '登入',
+                        style: TextStyle(
+                          color: _selectedSegment == 0
+                              ? CupertinoColors.white
+                              : CupertinoColors.activeBlue,
                         ),
                       ),
                     ),
@@ -100,17 +95,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: _selectedSegment == 1
                           ? CupertinoColors.activeBlue
                           : CupertinoColors.systemGrey6,
-                      child: SizedBox(
-                        height: 20.0,
-                        child: Center(
-                          child: Text(
-                            '註冊',
-                            style: TextStyle(
-                              color: _selectedSegment == 1
-                                  ? CupertinoColors.white
-                                  : CupertinoColors.activeBlue,
-                            ),
-                          ),
+                      child: Text(
+                        '註冊',
+                        style: TextStyle(
+                          color: _selectedSegment == 1
+                              ? CupertinoColors.white
+                              : CupertinoColors.activeBlue,
                         ),
                       ),
                     ),
