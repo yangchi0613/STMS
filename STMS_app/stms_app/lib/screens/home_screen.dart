@@ -131,17 +131,22 @@ class _HomeScreenState extends State<HomeScreen> {
                   .toList();
               catTasks.sort((a, b) => a.dueTime.compareTo(b.dueTime));
 
-              final isDarkMode = CupertinoTheme.of(context).brightness == Brightness.dark;
+              final isDarkMode =
+                  CupertinoTheme.of(context).brightness == Brightness.dark;
 
               return Container(
                 key: ValueKey(cat),
                 margin: const EdgeInsets.only(bottom: 20),
                 decoration: BoxDecoration(
-                  color: isDarkMode ? CupertinoColors.darkBackgroundGray : CupertinoColors.white,
+                  color: isDarkMode
+                      ? CupertinoColors.darkBackgroundGray
+                      : CupertinoColors.white,
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: isDarkMode ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+                      color: isDarkMode
+                          ? Colors.white.withOpacity(0.05)
+                          : Colors.black.withOpacity(0.05),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -221,17 +226,16 @@ class _HomeScreenState extends State<HomeScreen> {
         color: CupertinoColors.destructiveRed,
         padding: const EdgeInsets.symmetric(horizontal: 20),
         alignment: Alignment.centerLeft,
-        child: const Icon(
-          CupertinoIcons.delete,
-          color: Colors.white,
-        ),
+        child: const Icon(CupertinoIcons.delete, color: Colors.white),
       ),
       child: GestureDetector(
         onTap: () async {
           await Navigator.of(context).push(
             CupertinoPageRoute(
-              builder: (context) =>
-                  TaskDetailPage(task: task, onDelete: () => deleteTask(task.id)),
+              builder: (context) => TaskDetailPage(
+                task: task,
+                onDelete: () => deleteTask(task.id),
+              ),
             ),
           );
           setState(() {});
@@ -281,13 +285,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                                      Text(
-                                        task.title,
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          color: CupertinoTheme.of(context).textTheme.textStyle.color,
-                                        ),
-                                      ),                    Text(
+                    Text(
+                      task.title,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: CupertinoTheme.of(
+                          context,
+                        ).textTheme.textStyle.color,
+                      ),
+                    ),
+                    Text(
                       DateFormat('M月d日 HH:mm', 'zh_TW').format(task.dueTime),
                       style: TextStyle(
                         fontSize: 12,
@@ -326,7 +333,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: CupertinoTheme.of(context).brightness == Brightness.dark
+                    color:
+                        CupertinoTheme.of(context).brightness == Brightness.dark
                         ? Colors.white.withOpacity(0.05)
                         : Colors.black.withOpacity(0.05),
                     blurRadius: 10,
@@ -378,10 +386,13 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: CupertinoTheme.of(context).brightness == Brightness.dark
+                  color:
+                      CupertinoTheme.of(context).brightness == Brightness.dark
                       ? CupertinoColors.darkBackgroundGray
                       : CupertinoColors.white,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(30),
+                  ),
                 ),
                 child: ListView(
                   padding: const EdgeInsets.all(20),
@@ -444,13 +455,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     Colors.indigo,
                     false,
                   ),
-                  const Divider(height: 1, indent: 50),
-                  _buildMoreItem(
-                    CupertinoIcons.settings,
-                    "系統設定",
-                    Colors.grey,
-                    false,
-                  ),
                 ],
               ),
             ),
@@ -494,7 +498,9 @@ class _HomeScreenState extends State<HomeScreen> {
               title,
               style: TextStyle(
                 fontSize: 16,
-                color: isEnabled ? CupertinoTheme.of(context).textTheme.textStyle.color : Colors.grey,
+                color: isEnabled
+                    ? CupertinoTheme.of(context).textTheme.textStyle.color
+                    : Colors.grey,
               ),
             ),
             const Spacer(),
@@ -523,13 +529,18 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (BuildContext context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            final isDarkMode = CupertinoTheme.of(context).brightness == Brightness.dark;
+            final isDarkMode =
+                CupertinoTheme.of(context).brightness == Brightness.dark;
             return Container(
               height: 380,
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: isDarkMode ? CupertinoColors.darkBackgroundGray : CupertinoColors.systemBackground,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+                color: isDarkMode
+                    ? CupertinoColors.darkBackgroundGray
+                    : CupertinoColors.systemBackground,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(30),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
