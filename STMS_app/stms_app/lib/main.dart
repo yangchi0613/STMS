@@ -20,6 +20,9 @@ void main() async {
   // [新增] 初始化通知服務
   await NotificationService.init();
 
+  // Load the theme
+  await themeManager.init();
+
   initializeDateFormatting('zh_TW', null).then((_) {
     Intl.defaultLocale = 'zh_TW';
     runApp(const STMSApp());
