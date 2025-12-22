@@ -6,6 +6,7 @@ import 'package:table_calendar/table_calendar.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/task.dart';
+import '../services/notification_service.dart'; // [新增]
 import 'task_detail_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
@@ -18,22 +19,13 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // [修正 1] 補回這行：紀錄已完成的任務數量
-  // (注意：因為沒有存入資料庫，重開 APP 後這個數字會歸零，這是正常的)
   int completedTaskCount = 0;
-
-  // [UI] 類別 (中文)
   List<String> categories = ["學校", "生活", "日常"];
-
-  // 行事曆相關
   DateTime _selectedDay = DateTime.now();
   DateTime _focusedDay = DateTime.now();
-
-  // 計時器
   Timer? _timer;
   final Set<String> _notifiedTasks = {};
 
-  // [Firebase] 取得使用者與路徑
   String get uid => FirebaseAuth.instance.currentUser!.uid;
   CollectionReference get tasksCollection => FirebaseFirestore.instance
       .collection('users')
@@ -43,8 +35,11 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    // [新增] 進入首頁時，請求通知權限
+    NotificationService.requestPermissions();
+
     _timer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      // _checkDueTasks(); 
+      // 本地計時器保留
     });
   }
 
@@ -54,9 +49,10 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  // [Firebase] 新增任務
+  // [修改] 新增任務 + 設定通知
   Future<void> addTask(String title, String category, String priority, DateTime date) async {
-    await tasksCollection.add({
+    // 1. 存入 Firebase
+    DocumentReference docRef = await tasksCollection.add({
       'title': title,
       'category': category,
       'priority': priority,
@@ -64,25 +60,45 @@ class _HomeScreenState extends State<HomeScreen> {
       'dueTime': Timestamp.fromDate(date),
       'note': '',
     });
+
+    // 2. [新增] 設定排程通知
+    // 使用 hashCode 將 String ID 轉為 int ID
+    int notificationId = docRef.id.hashCode; 
+    
+    await NotificationService.scheduleNotification(
+      id: notificationId,
+      title: "⏰ 任務提醒：$title",
+      body: "您的事項「$title」時間到了！",
+      scheduledTime: date,
+    );
   }
 
-  // [Firebase] 刪除任務
+  // [修改] 刪除任務 + 取消通知
   Future<void> deleteTask(String taskId, {bool completed = false}) async {
-    // [修正 2] 如果是完成任務，讓計數器 +1
     if (completed) {
-      // 這裡只更新本地 UI 顯示，不影響資料庫
-      // 若要永久保存「完成數」，需要在 Firebase 另外開欄位存
       setState(() {
         completedTaskCount++;
       });
     }
     
     await tasksCollection.doc(taskId).delete();
+
+    // [新增] 取消該任務的通知
+    await NotificationService.cancelNotification(taskId.hashCode);
   }
 
-  // [Firebase] 更新任務
+  // [修改] 更新任務 + 重設通知
   Future<void> updateTask(Task task) async {
     await tasksCollection.doc(task.id).update(task.toMap());
+
+    // [新增] 重設通知 (先取消舊的，再設新的)
+    await NotificationService.cancelNotification(task.id.hashCode);
+    await NotificationService.scheduleNotification(
+      id: task.id.hashCode,
+      title: "⏰ 任務提醒：${task.title}",
+      body: "您的事項「${task.title}」時間到了！",
+      scheduledTime: task.dueTime,
+    );
   }
 
   void _rescheduleTask(Task task) {
@@ -106,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: const Text("確定延期"),
               onPressed: () {
                 task.dueTime = newDate;
-                updateTask(task);
+                updateTask(task); // 更新時會自動重設通知
                 _notifiedTasks.remove(task.id);
                 Navigator.pop(context);
               },
@@ -650,7 +666,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           style: TextStyle(color: Colors.white70, fontSize: 14),
                         ),
                         Text(
-                          "$completedTaskCount", // [修正 3] 變數現在存在了，錯誤消失
+                          "$completedTaskCount",
                           style: const TextStyle(
                               color: Colors.white,
                               fontSize: 32,

@@ -195,7 +195,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                                 horizontal: 10, vertical: 5,
                               ),
                               decoration: BoxDecoration(
-                                color: CupertinoColors.activeBlue.withOpacity(0.1),
+                                color: CupertinoColors.activeBlue.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Text(
@@ -233,11 +233,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                         Container(
                           padding: const EdgeInsets.symmetric(vertical: 15),
                           decoration: BoxDecoration(
-                            color: CupertinoColors.systemGrey6.withOpacity(0.5),
+                            color: CupertinoColors.systemGrey6.withValues(alpha: 0.5),
                             borderRadius: BorderRadius.circular(15),
                             border: Border.all(
                               color: _timeLeft.isNegative 
-                                  ? CupertinoColors.systemRed.withOpacity(0.3) 
+                                  ? CupertinoColors.systemRed.withValues(alpha: 0.3) 
                                   : Colors.transparent
                             ),
                           ),
@@ -283,7 +283,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
               child: SizedBox(
                 width: double.infinity,
                 child: CupertinoButton(
-                  color: CupertinoColors.systemRed.withOpacity(0.1),
+                  color: CupertinoColors.systemRed.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(15),
                   child: const Text("刪除此事項", style: TextStyle(color: CupertinoColors.systemRed, fontWeight: FontWeight.bold)),
                   onPressed: () {

@@ -1,16 +1,35 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // 引入 Auth
+import 'package:firebase_auth/firebase_auth.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
   @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  User? user;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshUser();
+  }
+
+  Future<void> _refreshUser() async {
+    user = FirebaseAuth.instance.currentUser;
+    await user?.reload();
+    user = FirebaseAuth.instance.currentUser;
+    if (mounted) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // 取得目前登入的使用者
-    final User? user = FirebaseAuth.instance.currentUser;
-    final String displayName = user?.displayName ?? "未命名使用者";
-    final String email = user?.email ?? "無電子郵件";
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final String displayName = currentUser?.displayName ?? "未命名使用者";
+    final String email = currentUser?.email ?? "無電子郵件";
 
     return CupertinoPageScaffold(
       navigationBar: const CupertinoNavigationBar(
@@ -43,19 +62,30 @@ class ProfileScreen extends StatelessWidget {
               ),
               const SizedBox(height: 32),
               
-              // 登出按鈕
               CupertinoButton(
-                color: CupertinoColors.destructiveRed.withOpacity(0.1),
+                padding: EdgeInsets.zero,
+                onPressed: _refreshUser,
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(CupertinoIcons.refresh),
+                    SizedBox(width: 5),
+                    Text("重新整理資料"),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              CupertinoButton(
+                color: CupertinoColors.destructiveRed.withValues(alpha: 0.1),
                 child: const Text(
                   '登出',
                   style: TextStyle(color: CupertinoColors.destructiveRed),
                 ),
                 onPressed: () async {
-                  // 1. 執行登出
                   await FirebaseAuth.instance.signOut();
-                  
-                  // 2. 因為 main.dart 有監聽，登出後會自動跳回 Login 畫面，
-                  // 所以這裡只要把目前的 Profile 頁面關掉就好
+                  // [修正] 登出後退回根目錄，讓 main.dart 接手
                   if (context.mounted) {
                     Navigator.of(context).popUntil((route) => route.isFirst);
                   }

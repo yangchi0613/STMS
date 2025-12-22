@@ -1,6 +1,6 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart'; // 為了使用 Colors
-import 'package:firebase_auth/firebase_auth.dart'; // [核心] 引入 Firebase Auth
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,7 +16,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
 
-  bool _isLoading = false; // 用來控制轉圈圈
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -27,7 +27,6 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // 顯示錯誤訊息的彈窗
   void _showErrorDialog(String message) {
     showCupertinoDialog(
       context: context,
@@ -44,21 +43,18 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // [核心] 處理登入與註冊邏輯
   Future<void> _handleAuth() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
     final username = _usernameController.text.trim();
     final confirmPassword = _confirmPasswordController.text.trim();
 
-    // 1. 基本檢查
     if (email.isEmpty || password.isEmpty) {
       _showErrorDialog("請輸入電子郵件和密碼");
       return;
     }
 
     if (_selectedSegment == 1) {
-      // 註冊模式額外檢查
       if (username.isEmpty) {
         _showErrorDialog("請輸入使用者名稱");
         return;
@@ -73,7 +69,6 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     }
 
-    // 2. 開始轉圈圈
     setState(() => _isLoading = true);
 
     try {
@@ -83,27 +78,31 @@ class _LoginScreenState extends State<LoginScreen> {
           email: email,
           password: password,
         );
-        // 成功後 main.dart 的 StreamBuilder 會自動切換頁面，這裡不需要 push
+        // [修正] 登入成功後，如果這個頁面是被 push 上來的（殭屍頁面），就把它關掉
+        if (mounted && Navigator.canPop(context)) {
+           Navigator.pop(context);
+        }
       } else {
         // --- 註冊邏輯 ---
-        // A. 建立帳號
         UserCredential userCredential =
             await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: email,
           password: password,
         );
 
-        // B. 儲存使用者名稱 (更新 Profile)
         if (userCredential.user != null) {
           await userCredential.user!.updateDisplayName(username);
-          await userCredential.user!.reload(); // 重新整理使用者資料
+          await userCredential.user!.reload();
+        }
+        // [修正] 註冊成功後同理
+        if (mounted && Navigator.canPop(context)) {
+           Navigator.pop(context);
         }
       }
     } on FirebaseAuthException catch (e) {
-      // 3. 處理 Firebase 回傳的錯誤
       String errorMessage = "發生未知錯誤";
-      if (e.code == 'user-not-found') {
-        errorMessage = "找不到此帳號，請先註冊";
+      if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
+        errorMessage = "帳號或密碼錯誤 (或帳號不存在)";
       } else if (e.code == 'wrong-password') {
         errorMessage = "密碼錯誤";
       } else if (e.code == 'email-already-in-use') {
@@ -117,7 +116,6 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       _showErrorDialog(e.toString());
     } finally {
-      // 4. 停止轉圈圈
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -157,7 +155,6 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // 切換按鈕
               SizedBox(
                 width: double.infinity,
                 child: CupertinoSegmentedControl<int>(
@@ -184,7 +181,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 32),
 
-              // 註冊時才顯示的使用者名稱
               if (isRegisterMode) ...[
                 _buildTextField(
                   controller: _usernameController,
@@ -193,7 +189,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 16),
               ],
 
-              // 電子郵件 (登入註冊都要)
               _buildTextField(
                 controller: _emailController,
                 placeholder: '電子郵件',
@@ -202,14 +197,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 16),
 
-              // 密碼
               _buildTextField(
                 controller: _passwordController,
                 placeholder: '密碼',
                 obscureText: true,
               ),
 
-              // 註冊時才顯示的確認密碼
               if (isRegisterMode) ...[
                 const SizedBox(height: 16),
                 _buildTextField(
@@ -221,15 +214,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 32),
 
-              // 按鈕
               if (_isLoading)
                 const CupertinoActivityIndicator()
               else
                 SizedBox(
                   width: double.infinity,
                   child: CupertinoButton.filled(
-                    child: Text(isRegisterMode ? '註冊並登入' : '登入'),
                     onPressed: _handleAuth,
+                    child: Text(isRegisterMode ? '註冊並登入' : '登入'),
                   ),
                 ),
             ],
