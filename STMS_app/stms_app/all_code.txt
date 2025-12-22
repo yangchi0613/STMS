@@ -1,10 +1,95 @@
+import 'package:flutter/cupertino.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'screens/login_screen.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'theme_manager.dart';
+
+void main() {
+  initializeDateFormatting('zh_TW', null).then((_) {
+    Intl.defaultLocale = 'zh_TW';
+    runApp(const STMSApp());
+  });
+}
+
+class STMSApp extends StatelessWidget {
+  const STMSApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeManager,
+      builder: (context, currentTheme, child) {
+        return CupertinoApp(
+          title: 'STMS',
+          debugShowCheckedModeBanner: false,
+          theme: CupertinoThemeData(
+            brightness: currentTheme == ThemeMode.dark ? Brightness.dark : Brightness.light,
+            primaryColor: CupertinoColors.activeBlue,
+            scaffoldBackgroundColor: currentTheme == ThemeMode.dark ? CupertinoColors.black : CupertinoColors.systemGroupedBackground,
+          ),
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [Locale('zh', 'TW'), Locale('en', 'US')],
+          locale: const Locale('zh', 'TW'),
+          home: const LoginScreen(),
+        );
+      },
+    );
+  }
+}
+import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+
+class ThemeManager extends ValueNotifier<ThemeMode> {
+  ThemeManager() : super(_getInitialThemeMode());
+
+  static ThemeMode _getInitialThemeMode() {
+    try {
+      return SchedulerBinding.instance.window.platformBrightness == Brightness.dark
+          ? ThemeMode.dark
+          : ThemeMode.light;
+    } catch (e) {
+      return ThemeMode.light;
+    }
+  }
+
+  void setThemeMode(ThemeMode mode) {
+    value = mode;
+  }
+}
+
+// Global singleton instance
+final themeManager = ThemeManager();
+// --- 資料模型 ---
+class Task {
+  String id;
+  String title;
+  String category;
+  String priority;
+  String status;
+  DateTime dueTime;
+  String note;
+
+  Task({
+    required this.id,
+    required this.title,
+    required this.category,
+    required this.priority,
+    required this.status,
+    required this.dueTime,
+    this.note = "",
+  });
+}
 import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/task.dart';
 import 'task_detail_screen.dart';
 import 'profile_screen.dart';
@@ -18,8 +103,10 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // [修正 1] 補回這行：紀錄已完成的任務數量
-  // (注意：因為沒有存入資料庫，重開 APP 後這個數字會歸零，這是正常的)
+  // 事項清單
+  List<Task> tasks = [];
+
+  // 紀錄已完成的任務數量
   int completedTaskCount = 0;
 
   // [UI] 類別 (中文)
@@ -33,18 +120,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _timer;
   final Set<String> _notifiedTasks = {};
 
-  // [Firebase] 取得使用者與路徑
-  String get uid => FirebaseAuth.instance.currentUser!.uid;
-  CollectionReference get tasksCollection => FirebaseFirestore.instance
-      .collection('users')
-      .doc(uid)
-      .collection('tasks');
-
   @override
   void initState() {
     super.initState();
     _timer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      // _checkDueTasks(); 
+      _checkDueTasks();
     });
   }
 
@@ -54,35 +134,46 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  // [Firebase] 新增任務
-  Future<void> addTask(String title, String category, String priority, DateTime date) async {
-    await tasksCollection.add({
-      'title': title,
-      'category': category,
-      'priority': priority,
-      'status': 'Pending',
-      'dueTime': Timestamp.fromDate(date),
-      'note': '',
-    });
-  }
-
-  // [Firebase] 刪除任務
-  Future<void> deleteTask(String taskId, {bool completed = false}) async {
-    // [修正 2] 如果是完成任務，讓計數器 +1
-    if (completed) {
-      // 這裡只更新本地 UI 顯示，不影響資料庫
-      // 若要永久保存「完成數」，需要在 Firebase 另外開欄位存
-      setState(() {
-        completedTaskCount++;
-      });
+  void _checkDueTasks() {
+    final now = DateTime.now();
+    for (var task in tasks) {
+      if (now.isAfter(task.dueTime) && !_notifiedTasks.contains(task.id)) {
+        setState(() {
+          _notifiedTasks.add(task.id);
+        });
+        if (mounted) {
+          _showTimeoutDialog(task);
+        }
+      }
     }
-    
-    await tasksCollection.doc(taskId).delete();
   }
 
-  // [Firebase] 更新任務
-  Future<void> updateTask(Task task) async {
-    await tasksCollection.doc(task.id).update(task.toMap());
+  void _showTimeoutDialog(Task task) {
+    showCupertinoDialog(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text("⏰ 時間到囉！"),
+        content: Text("事項「${task.title}」的時間已經到了。\n接下來要怎麼做？"),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            child: const Text("繼續做 (延時)"),
+            onPressed: () {
+              Navigator.pop(context);
+              _rescheduleTask(task);
+            },
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            child: const Text("已完成"),
+            onPressed: () {
+              deleteTask(task.id, completed: true);
+              Navigator.pop(context);
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   void _rescheduleTask(Task task) {
@@ -105,9 +196,21 @@ class _HomeScreenState extends State<HomeScreen> {
             CupertinoButton(
               child: const Text("確定延期"),
               onPressed: () {
-                task.dueTime = newDate;
-                updateTask(task);
-                _notifiedTasks.remove(task.id);
+                setState(() {
+                  final index = tasks.indexWhere((t) => t.id == task.id);
+                  if (index != -1) {
+                    tasks[index] = Task(
+                      id: task.id,
+                      title: task.title,
+                      category: task.category,
+                      priority: task.priority,
+                      status: task.status,
+                      dueTime: newDate,
+                      note: task.note,
+                    );
+                    _notifiedTasks.remove(task.id);
+                  }
+                });
                 Navigator.pop(context);
               },
             )
@@ -117,50 +220,57 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void addTask(String title, String category, String priority, DateTime date) {
+    setState(() {
+      tasks.add(
+        Task(
+          id: DateTime.now().toString(),
+          title: title,
+          category: category,
+          priority: priority,
+          status: "Pending",
+          dueTime: date,
+          note: "",
+        ),
+      );
+    });
+  }
+
+  void deleteTask(String taskId, {bool completed = false}) {
+    setState(() {
+      if (completed) completedTaskCount++;
+      tasks.removeWhere((t) => t.id == taskId);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: tasksCollection.snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return const CupertinoPageScaffold(child: Center(child: Text("連線錯誤")));
-        }
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const CupertinoPageScaffold(child: Center(child: CupertinoActivityIndicator()));
-        }
-
-        final List<Task> tasks = snapshot.data!.docs.map((doc) {
-          return Task.fromFirestore(doc);
-        }).toList();
-
-        return CupertinoTabScaffold(
-          tabBar: CupertinoTabBar(
-            items: const [
-              BottomNavigationBarItem(
-                icon: Icon(CupertinoIcons.list_bullet),
-                label: '待辦',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(CupertinoIcons.calendar),
-                label: '行事曆',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(CupertinoIcons.square_grid_2x2),
-                label: '更多',
-              ),
-            ],
+    return CupertinoTabScaffold(
+      tabBar: CupertinoTabBar(
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(CupertinoIcons.list_bullet),
+            label: '待辦',
           ),
-          tabBuilder: (context, index) {
-            if (index == 0) return _buildHomeTab(tasks);
-            if (index == 1) return _buildCalendarTab(tasks);
-            return _buildMoreTab(tasks);
-          },
-        );
+          BottomNavigationBarItem(
+            icon: Icon(CupertinoIcons.calendar),
+            label: '行事曆',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(CupertinoIcons.square_grid_2x2),
+            label: '更多',
+          ),
+        ],
+      ),
+      tabBuilder: (context, index) {
+        if (index == 0) return _buildHomeTab();
+        if (index == 1) return _buildCalendarTab();
+        return _buildMoreTab();
       },
     );
   }
 
-  Widget _buildHomeTab(List<Task> tasks) {
+  Widget _buildHomeTab() {
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
         middle: const Text('我的事項'),
@@ -301,10 +411,10 @@ class _HomeScreenState extends State<HomeScreen> {
               builder: (context) => TaskDetailPage(
                 task: task,
                 onDelete: () => deleteTask(task.id),
-                onUpdate: () => updateTask(task),
               ),
             ),
           );
+          setState(() {});
         },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -430,7 +540,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildCalendarTab(List<Task> tasks) {
+  Widget _buildCalendarTab() {
     List<Task> dailyTasks =
         tasks.where((t) => isSameDay(t.dueTime, _selectedDay)).toList();
 
@@ -540,7 +650,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildMoreTab(List<Task> tasks) {
+  Widget _buildMoreTab() {
     return CupertinoPageScaffold(
       navigationBar: const CupertinoNavigationBar(middle: Text('更多功能')),
       child: SafeArea(
@@ -584,7 +694,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Colors.indigo,
                     true,
                     () {
-                      _showProductivityCharts(context, tasks);
+                      _showProductivityCharts(context);
                     },
                   ),
                 ],
@@ -596,7 +706,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showProductivityCharts(BuildContext context, List<Task> tasks) {
+  void _showProductivityCharts(BuildContext context) {
     showCupertinoModalPopup(
       context: context,
       builder: (context) {
@@ -630,6 +740,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 20),
+              // Overview
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -650,7 +761,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           style: TextStyle(color: Colors.white70, fontSize: 14),
                         ),
                         Text(
-                          "$completedTaskCount", // [修正 3] 變數現在存在了，錯誤消失
+                          "$completedTaskCount",
                           style: const TextStyle(
                               color: Colors.white,
                               fontSize: 32,
@@ -682,6 +793,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   style:
                       TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
               const SizedBox(height: 15),
+              // Charts
               Expanded(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -770,23 +882,25 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- Add Task Modal (邏輯完全保留) ---
+  // --- 修改後的 Add Task Modal (包含智慧分析 + 延遲) ---
   void _showAddTaskModal(BuildContext context) {
     String currentTitle = "";
-    DateTime selectedDate = DateTime.now(); 
+    DateTime selectedDate = DateTime.now(); // 預設時間：當下
     String selectedCategory =
         categories.isNotEmpty ? categories.first : "未分類";
 
+    // 用來控制是否正在跑動畫的變數
     bool isAnalyzing = false;
 
-    // AI 分析邏輯
+    // 核心分析邏輯 (封裝起來，按鈕觸發)
     void analyzeAndSet(String input, StateSetter setModalState) {
       String lowerInput = input.toLowerCase();
       DateTime now = DateTime.now();
-      DateTime newDate = selectedDate; 
+      DateTime newDate = selectedDate; // 基礎時間
       String? newCategory = selectedCategory;
       bool dateFound = false;
 
+      // --- 1. 時間偵測邏輯 ---
       if (lowerInput.contains("tomorrow")) {
         newDate = now.add(const Duration(days: 1));
         dateFound = true;
@@ -832,7 +946,7 @@ class _HomeScreenState extends State<HomeScreen> {
         newDate = DateTime(now.year, now.month, now.day, hour, 0);
       }
 
-      // 類別偵測
+      // --- 2. 類別偵測邏輯 ---
       if (lowerInput.contains("school") ||
           lowerInput.contains("exam") ||
           lowerInput.contains("class") ||
@@ -857,6 +971,7 @@ class _HomeScreenState extends State<HomeScreen> {
         newCategory = "日常";
       }
 
+      // 更新介面
       setModalState(() {
         selectedDate = newDate;
         if (newCategory != null) selectedCategory = newCategory;
@@ -871,7 +986,7 @@ class _HomeScreenState extends State<HomeScreen> {
             final isDarkMode =
                 CupertinoTheme.of(context).brightness == Brightness.dark;
             return Container(
-              height: 480, 
+              height: 480, // 加高高度
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: isDarkMode
@@ -916,6 +1031,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 10),
 
+                  // 輸入框 (placeholder 清空)
                   CupertinoTextField(
                     placeholder: "", 
                     padding: const EdgeInsets.all(16),
@@ -1010,6 +1126,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         },
                       ),
                       
+                      // 智慧分析按鈕
                       _buildCircleBtn(
                         CupertinoIcons.wand_stars,
                         "AI 功能",
@@ -1021,6 +1138,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             isAnalyzing = true;
                           });
 
+                          // 模擬延遲 1.5 秒
                           await Future.delayed(
                               const Duration(milliseconds: 1500));
 
@@ -1127,6 +1245,747 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+import 'package:flutter/cupertino.dart';
+import 'home_screen.dart';
+
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  int _selectedSegment = 0; // 0 for Login, 1 for Register
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  // 封裝一個通用的 CupertinoTextField 樣式
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String placeholder,
+    bool obscureText = false,
+    TextInputType keyboardType = TextInputType.text,
+  }) {
+    return CupertinoTextField(
+      controller: controller,
+      placeholder: placeholder,
+      obscureText: obscureText,
+      keyboardType: keyboardType,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: CupertinoColors.systemGrey6,
+        borderRadius: BorderRadius.circular(15),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 判斷是否為註冊模式
+    final bool isRegisterMode = _selectedSegment == 1;
+
+    return CupertinoPageScaffold(
+      navigationBar: CupertinoNavigationBar(
+        middle: Text(isRegisterMode ? '註冊' : '登入'),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // 登入/註冊 切換按鈕 (此處已固定，無需修改)
+              Row(
+                children: [
+                  Expanded(
+                    child: CupertinoButton(
+                      onPressed: () {
+                        setState(() {
+                          _selectedSegment = 0;
+                        });
+                      },
+                      color: _selectedSegment == 0
+                          ? CupertinoColors.activeBlue
+                          : CupertinoColors.systemGrey6,
+                      child: Text(
+                        '登入',
+                        style: TextStyle(
+                          color: _selectedSegment == 0
+                              ? CupertinoColors.white
+                              : CupertinoColors.activeBlue,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: CupertinoButton(
+                      onPressed: () {
+                        setState(() {
+                          _selectedSegment = 1;
+                        });
+                      },
+                      color: _selectedSegment == 1
+                          ? CupertinoColors.activeBlue
+                          : CupertinoColors.systemGrey6,
+                      child: Text(
+                        '註冊',
+                        style: TextStyle(
+                          color: _selectedSegment == 1
+                              ? CupertinoColors.white
+                              : CupertinoColors.activeBlue,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 32),
+
+              // 使用者名稱 (登入/註冊皆有)
+              _buildTextField(
+                controller: _usernameController,
+                placeholder: '使用者名稱',
+              ),
+
+              const SizedBox(height: 16),
+
+              // 電子郵件 (僅註冊有，使用 Visibility 保持空間)
+              Visibility(
+                visible: isRegisterMode,
+                maintainSize: true, // 保持佔用空間
+                maintainAnimation: true,
+                maintainState: true,
+                child: Column(
+                  children: [
+                    _buildTextField(
+                      controller: _emailController,
+                      placeholder: '電子郵件',
+                      keyboardType: TextInputType.emailAddress,
+                    ),
+                    const SizedBox(height: 16), // Email 下方的間距
+                  ],
+                ),
+              ),
+
+              // 密碼 (登入/註冊皆有)
+              _buildTextField(
+                controller: _passwordController,
+                placeholder: '密碼',
+                obscureText: true,
+              ),
+
+              const SizedBox(height: 16),
+
+              // 確認密碼 (僅註冊有，使用 Visibility 保持空間)
+              Visibility(
+                visible: isRegisterMode,
+                maintainSize: true, // 保持佔用空間
+                maintainAnimation: true,
+                maintainState: true,
+                child: _buildTextField(
+                  controller: _confirmPasswordController,
+                  placeholder: '確認密碼',
+                  obscureText: true,
+                ),
+              ),
+
+              const SizedBox(height: 32),
+
+              // 主要動作按鈕
+              CupertinoButton.filled(
+                child: Text(isRegisterMode ? '註冊' : '登入'),
+                onPressed: () {
+                  if (_selectedSegment == 0) {
+                    // TODO: Implement login logic
+                    _performAction(
+                      '登入',
+                      _usernameController.text,
+                      _passwordController.text,
+                    );
+                  } else {
+                    // TODO: Implement registration logic
+                    _performAction(
+                      '註冊',
+                      _usernameController.text,
+                      _passwordController.text,
+                      _emailController.text,
+                      _confirmPasswordController.text,
+                    );
+                  }
+
+                  // 導航到 HomeScreen
+                  Navigator.of(context).pushReplacement(
+                    CupertinoPageRoute(
+                      builder: (context) => const HomeScreen(),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 簡易的動作執行函式（可替換為實際的登入/註冊邏輯）
+  void _performAction(
+    String action,
+    String username,
+    String password, [
+    String? email,
+    String? confirmPassword,
+  ]) {
+    print('$action 資訊:');
+    print('使用者名稱: $username');
+    print('密碼: $password');
+    if (action == '註冊') {
+      print('電子郵件: $email');
+      print('確認密碼: $confirmPassword');
+      if (password != confirmPassword) {
+        print('錯誤: 密碼與確認密碼不一致！');
+        // 實際應用中應該在這裡顯示錯誤訊息給使用者
+      }
+    }
+  }
+}
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+import 'login_screen.dart';
+
+class ProfileScreen extends StatelessWidget {
+  const ProfileScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoPageScaffold(
+      navigationBar: const CupertinoNavigationBar(
+        middle: Text('個人資訊'),
+      ),
+      child: SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircleAvatar(
+                radius: 50,
+                child: Icon(CupertinoIcons.person, size: 50),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '使用者名稱',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'user@example.com',
+                style: TextStyle(fontSize: 16, color: CupertinoColors.systemGrey),
+              ),
+              const SizedBox(height: 32),
+              CupertinoButton(
+                child: const Text('登出'),
+                onPressed: () {
+                  Navigator.of(context, rootNavigator: true).pushReplacement(
+                    CupertinoPageRoute(builder: (context) => const LoginScreen()),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+import '../theme_manager.dart';
+
+class SettingsScreen extends StatefulWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  @override
+  Widget build(BuildContext context) {
+    //
+    final isDarkMode = themeManager.value == ThemeMode.dark;
+
+    return CupertinoPageScaffold(
+      navigationBar: const CupertinoNavigationBar(
+        middle: Text('設定'),
+      ),
+      child: SafeArea(
+        child: ListView(
+          children: [
+            CupertinoListSection(
+              header: const Text('帳戶'),
+              children: [
+                CupertinoListTile(
+                  title: const Text('編輯個人資料'),
+                  leading: const Icon(CupertinoIcons.person),
+                  trailing: const Icon(CupertinoIcons.right_chevron),
+                  onTap: () {},
+                ),
+                CupertinoListTile(
+                  title: const Text('更改密碼'),
+                  leading: const Icon(CupertinoIcons.lock),
+                  trailing: const Icon(CupertinoIcons.right_chevron),
+                  onTap: () {},
+                ),
+              ],
+            ),
+            CupertinoListSection(
+              header: const Text('外觀'),
+              children: [
+                CupertinoListTile(
+                  title: const Text('深色模式'),
+                  leading: const Icon(CupertinoIcons.moon_stars),
+                  trailing: CupertinoSwitch(
+                    value: isDarkMode,
+                    onChanged: (bool value) {
+                      setState(() {
+                        themeManager.setThemeMode(
+                          value ? ThemeMode.dark : ThemeMode.light,
+                        );
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+            CupertinoListSection(
+              header: const Text('關於'),
+              children: [
+                CupertinoListTile(
+                  title: const Text('版本'),
+                  leading: const Icon(CupertinoIcons.info),
+                  additionalInfo: const Text('1.0.0'),
+                  onTap: () {},
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+import 'dart:async'; // [新增] 用於計時器
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../models/task.dart';
+
+class TaskDetailPage extends StatefulWidget {
+  final Task task;
+  final VoidCallback onDelete; // 這裡我們當作「刪除」或「完成」都呼叫這個
+
+  const TaskDetailPage({
+    super.key, 
+    required this.task, 
+    required this.onDelete
+  });
+
+  @override
+  State<TaskDetailPage> createState() => _TaskDetailPageState();
+}
+
+class _TaskDetailPageState extends State<TaskDetailPage> {
+  late TextEditingController _titleController;
+  late TextEditingController _noteController;
+  late DateTime _currentDueTime;
+  
+  Timer? _timer;
+  Duration _timeLeft = Duration.zero;
+  bool _hasAlerted = false; // 防止彈窗重複跳出
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.task.title);
+    _noteController = TextEditingController(text: widget.task.note);
+    _currentDueTime = widget.task.dueTime;
+    
+    // 初始化倒數時間
+    _updateTimeLeft();
+    
+    // 啟動計時器，每秒更新倒數
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          _updateTimeLeft();
+        });
+        _checkIfTimeUp();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _noteController.dispose();
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  // 計算剩餘時間
+  void _updateTimeLeft() {
+    final now = DateTime.now();
+    _timeLeft = _currentDueTime.difference(now);
+  }
+
+  // 檢查是否時間到
+  void _checkIfTimeUp() {
+    // 如果時間到了(變成負數)，且還沒彈過窗
+    if (_timeLeft.isNegative && !_hasAlerted) {
+      _hasAlerted = true; // 標記已彈窗
+      _showTimeUpDialog();
+    }
+  }
+
+  // 顯示時間選擇器
+  void _showDatePicker() {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (BuildContext builderContext) {
+        return Container(
+          height: 250,
+          color: CupertinoTheme.of(context).brightness == Brightness.dark
+              ? CupertinoColors.black
+              : CupertinoColors.white,
+          child: Column(
+            children: [
+              SizedBox(
+                height: 190,
+                child: CupertinoDatePicker(
+                  mode: CupertinoDatePickerMode.dateAndTime,
+                  initialDateTime: _currentDueTime,
+                  use24hFormat: true,
+                  onDateTimeChanged: (DateTime newDateTime) {
+                    setState(() {
+                      _currentDueTime = newDateTime;
+                      widget.task.dueTime = newDateTime; // 更新原始資料
+                      _hasAlerted = false; // 重設彈窗狀態，因為時間延長了
+                    });
+                  },
+                ),
+              ),
+              CupertinoButton(
+                child: const Text("確定"),
+                onPressed: () => Navigator.pop(builderContext),
+              )
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // 時間到的彈窗
+  void _showTimeUpDialog() {
+    showCupertinoDialog(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text("⏰ 時間到囉！"),
+        content: Text("事項「${widget.task.title}」的時間已經到了。\n接下來要怎麼做？"),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            child: const Text("繼續做 (延時)"),
+            onPressed: () {
+              Navigator.pop(context);
+              _showDatePicker(); // 直接打開時間選擇器
+            },
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            child: const Text("已完成"),
+            onPressed: () {
+              widget.onDelete(); // 呼叫刪除/完成邏輯
+              Navigator.pop(context); // 關閉 Dialog
+              Navigator.pop(context); // 退出詳情頁回到首頁
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 格式化數字 (補0)
+  String _twoDigits(int n) {
+    if (n >= 10) return "$n";
+    return "0$n";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDarkMode = CupertinoTheme.of(context).brightness == Brightness.dark;
+    
+    // 計算倒數顯示字串
+    String days = _timeLeft.inDays > 0 ? _twoDigits(_timeLeft.inDays) : "00";
+    String hours = _twoDigits(_timeLeft.inHours.remainder(24));
+    String minutes = _twoDigits(_timeLeft.inMinutes.remainder(60));
+    String seconds = _twoDigits(_timeLeft.inSeconds.remainder(60));
+    
+    // 如果過期，顯示紅色00
+    if (_timeLeft.isNegative) {
+      days = hours = minutes = seconds = "00";
+    }
+
+    return CupertinoPageScaffold(
+      navigationBar: const CupertinoNavigationBar(middle: Text("事項詳情")),
+      backgroundColor: CupertinoColors.systemGroupedBackground,
+      child: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: isDarkMode 
+                          ? CupertinoColors.darkBackgroundGray 
+                          : CupertinoColors.white,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // [修改] 可編輯標題
+                        CupertinoTextField(
+                          controller: _titleController,
+                          placeholder: "事項名稱",
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: isDarkMode ? Colors.white : Colors.black,
+                          ),
+                          decoration: null, // 去除邊框看起來像純文字
+                          padding: EdgeInsets.zero,
+                          onChanged: (val) {
+                            widget.task.title = val; // 即時存回資料
+                          },
+                        ),
+                        const SizedBox(height: 15),
+                        
+                        // [修改] 類別 + 可點擊修改的時間
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: CupertinoColors.activeBlue.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                widget.task.category,
+                                style: const TextStyle(
+                                  color: CupertinoColors.activeBlue,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            // 點擊這裡可以修改時間
+                            GestureDetector(
+                              onTap: _showDatePicker,
+                              child: Row(
+                                children: [
+                                  const Icon(CupertinoIcons.calendar, size: 18, color: Colors.grey),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    DateFormat('yyyy/MM/dd HH:mm').format(_currentDueTime),
+                                    style: const TextStyle(
+                                      color: CupertinoColors.activeBlue, // 改成藍色提示可點擊
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  const Icon(CupertinoIcons.pencil, size: 14, color: Colors.grey),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        
+                        const SizedBox(height: 25),
+                        // [新增] 倒數計時面板
+                        const Text("距離結束還有", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          decoration: BoxDecoration(
+                            color: CupertinoColors.systemGrey6.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(15),
+                            border: Border.all(
+                              color: _timeLeft.isNegative 
+                                  ? CupertinoColors.systemRed.withValues(alpha: 0.3) 
+                                  : Colors.transparent
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              _buildTimeBox(days, "天", isDarkMode),
+                              _buildSeparator(isDarkMode),
+                              _buildTimeBox(hours, "時", isDarkMode),
+                              _buildSeparator(isDarkMode),
+                              _buildTimeBox(minutes, "分", isDarkMode),
+                              _buildSeparator(isDarkMode),
+                              _buildTimeBox(seconds, "秒", isDarkMode, isRed: _timeLeft.inMinutes < 5 && !_timeLeft.isNegative),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  // 備註區域
+                  const Text(
+                    "  備註",
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Container(
+                    height: 200,
+                    decoration: BoxDecoration(
+                      color: isDarkMode 
+                          ? CupertinoColors.darkBackgroundGray 
+                          : CupertinoColors.white,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: CupertinoTextField(
+                      controller: _noteController,
+                      placeholder: "在這裡輸入心得或細節...",
+                      maxLines: null,
+                      decoration: null,
+                      padding: const EdgeInsets.all(20),
+                      style: TextStyle(
+                        color: isDarkMode ? Colors.white : Colors.black,
+                      ),
+                      onChanged: (val) => widget.task.note = val,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            // 刪除按鈕
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: SizedBox(
+                width: double.infinity,
+                child: CupertinoButton(
+                  color: CupertinoColors.systemRed.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(15),
+                  child: const Text(
+                    "刪除此事項",
+                    style: TextStyle(
+                      color: CupertinoColors.systemRed,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  onPressed: () {
+                    showCupertinoDialog(
+                      context: context,
+                      builder: (context) => CupertinoAlertDialog(
+                        title: const Text("確認刪除"),
+                        content: const Text("刪除後無法復原，確定嗎？"),
+                        actions: [
+                          CupertinoDialogAction(
+                            child: const Text("取消"),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                          CupertinoDialogAction(
+                            isDestructiveAction: true,
+                            child: const Text("刪除"),
+                            onPressed: () {
+                              widget.onDelete();
+                              Navigator.pop(context);
+                              Navigator.pop(context);
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 小組件：時間數字方塊
+  Widget _buildTimeBox(String value, String label, bool isDark, {bool isRed = false}) {
+    Color textColor = isRed 
+        ? CupertinoColors.systemRed 
+        : (isDark ? Colors.white : Colors.black87);
+        
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            fontFamily: "Courier", // 等寬字體比較好看
+            color: textColor,
+          ),
+        ),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 10, color: Colors.grey),
+        ),
+      ],
+    );
+  }
+
+  // 小組件：冒號分隔符
+  Widget _buildSeparator(bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 15),
+      child: Text(
+        ":",
+        style: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+          color: isDark ? Colors.white54 : Colors.black26,
+        ),
       ),
     );
   }

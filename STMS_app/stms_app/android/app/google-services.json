@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "475492806546",
+    "project_id": "stms-backend",
+    "storage_bucket": "stms-backend.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:475492806546:android:02caa1e0f8faa1650b5b4b",
+        "android_client_info": {
+          "package_name": "com.example.stms_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBvWwxB6OLika4acLD6R35dqtjESILJNEQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

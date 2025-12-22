@@ -1,4 +1,4 @@
-import 'dart:async'; // [新增] 用於計時器
+import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -6,12 +6,14 @@ import '../models/task.dart';
 
 class TaskDetailPage extends StatefulWidget {
   final Task task;
-  final VoidCallback onDelete; // 這裡我們當作「刪除」或「完成」都呼叫這個
+  final VoidCallback onDelete;
+  final VoidCallback onUpdate; // [新增] 更新回呼函式
 
   const TaskDetailPage({
     super.key, 
     required this.task, 
-    required this.onDelete
+    required this.onDelete,
+    required this.onUpdate, // [新增]
   });
 
   @override
@@ -25,7 +27,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   
   Timer? _timer;
   Duration _timeLeft = Duration.zero;
-  bool _hasAlerted = false; // 防止彈窗重複跳出
+  bool _hasAlerted = false;
 
   @override
   void initState() {
@@ -33,11 +35,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     _titleController = TextEditingController(text: widget.task.title);
     _noteController = TextEditingController(text: widget.task.note);
     _currentDueTime = widget.task.dueTime;
-    
-    // 初始化倒數時間
     _updateTimeLeft();
     
-    // 啟動計時器，每秒更新倒數
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
         setState(() {
@@ -48,6 +47,24 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     });
   }
 
+  // [新增] 當頁面關閉時，自動儲存修改
+  @override
+  void deactivate() {
+    // 檢查是否有變更
+    if (widget.task.title != _titleController.text || 
+        widget.task.note != _noteController.text ||
+        widget.task.dueTime != _currentDueTime) {
+          
+      widget.task.title = _titleController.text;
+      widget.task.note = _noteController.text;
+      widget.task.dueTime = _currentDueTime;
+      
+      // 呼叫更新
+      widget.onUpdate();
+    }
+    super.deactivate();
+  }
+
   @override
   void dispose() {
     _titleController.dispose();
@@ -56,22 +73,18 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     super.dispose();
   }
 
-  // 計算剩餘時間
   void _updateTimeLeft() {
     final now = DateTime.now();
     _timeLeft = _currentDueTime.difference(now);
   }
 
-  // 檢查是否時間到
   void _checkIfTimeUp() {
-    // 如果時間到了(變成負數)，且還沒彈過窗
     if (_timeLeft.isNegative && !_hasAlerted) {
-      _hasAlerted = true; // 標記已彈窗
-      _showTimeUpDialog();
+      _hasAlerted = true; 
+      // 這裡暫時不彈窗，避免編輯時一直被打斷，只在列表頁彈窗就好
     }
   }
 
-  // 顯示時間選擇器
   void _showDatePicker() {
     showCupertinoModalPopup(
       context: context,
@@ -92,8 +105,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                   onDateTimeChanged: (DateTime newDateTime) {
                     setState(() {
                       _currentDueTime = newDateTime;
-                      widget.task.dueTime = newDateTime; // 更新原始資料
-                      _hasAlerted = false; // 重設彈窗狀態，因為時間延長了
+                      _hasAlerted = false;
                     });
                   },
                 ),
@@ -109,59 +121,42 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     );
   }
 
-  // 時間到的彈窗
-  void _showTimeUpDialog() {
-    showCupertinoDialog(
-      context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text("⏰ 時間到囉！"),
-        content: Text("事項「${widget.task.title}」的時間已經到了。\n接下來要怎麼做？"),
-        actions: [
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            child: const Text("繼續做 (延時)"),
-            onPressed: () {
-              Navigator.pop(context);
-              _showDatePicker(); // 直接打開時間選擇器
-            },
-          ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            child: const Text("已完成"),
-            onPressed: () {
-              widget.onDelete(); // 呼叫刪除/完成邏輯
-              Navigator.pop(context); // 關閉 Dialog
-              Navigator.pop(context); // 退出詳情頁回到首頁
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 格式化數字 (補0)
+  // 格式化數字
   String _twoDigits(int n) {
     if (n >= 10) return "$n";
     return "0$n";
   }
 
+  // 為了簡化，UI 部分保持大同小異，主要是邏輯增加
   @override
   Widget build(BuildContext context) {
     final isDarkMode = CupertinoTheme.of(context).brightness == Brightness.dark;
     
-    // 計算倒數顯示字串
     String days = _timeLeft.inDays > 0 ? _twoDigits(_timeLeft.inDays) : "00";
     String hours = _twoDigits(_timeLeft.inHours.remainder(24));
     String minutes = _twoDigits(_timeLeft.inMinutes.remainder(60));
     String seconds = _twoDigits(_timeLeft.inSeconds.remainder(60));
     
-    // 如果過期，顯示紅色00
     if (_timeLeft.isNegative) {
       days = hours = minutes = seconds = "00";
     }
 
     return CupertinoPageScaffold(
-      navigationBar: const CupertinoNavigationBar(middle: Text("事項詳情")),
+      navigationBar: CupertinoNavigationBar(
+        middle: const Text("事項詳情"),
+        // [新增] 儲存按鈕，讓使用者明確知道可以存檔 (雖然我們有做自動存檔)
+        trailing: CupertinoButton(
+          padding: EdgeInsets.zero,
+          child: const Text("儲存"),
+          onPressed: () {
+             widget.task.title = _titleController.text;
+             widget.task.note = _noteController.text;
+             widget.task.dueTime = _currentDueTime;
+             widget.onUpdate();
+             Navigator.pop(context);
+          },
+        ),
+      ),
       backgroundColor: CupertinoColors.systemGroupedBackground,
       child: SafeArea(
         child: Column(
@@ -181,7 +176,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // [修改] 可編輯標題
                         CupertinoTextField(
                           controller: _titleController,
                           placeholder: "事項名稱",
@@ -190,21 +184,15 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                             fontWeight: FontWeight.bold,
                             color: isDarkMode ? Colors.white : Colors.black,
                           ),
-                          decoration: null, // 去除邊框看起來像純文字
+                          decoration: null,
                           padding: EdgeInsets.zero,
-                          onChanged: (val) {
-                            widget.task.title = val; // 即時存回資料
-                          },
                         ),
                         const SizedBox(height: 15),
-                        
-                        // [修改] 類別 + 可點擊修改的時間
                         Row(
                           children: [
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 5,
+                                horizontal: 10, vertical: 5,
                               ),
                               decoration: BoxDecoration(
                                 color: CupertinoColors.activeBlue.withOpacity(0.1),
@@ -219,7 +207,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                               ),
                             ),
                             const SizedBox(width: 10),
-                            // 點擊這裡可以修改時間
                             GestureDetector(
                               onTap: _showDatePicker,
                               child: Row(
@@ -229,7 +216,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                                   Text(
                                     DateFormat('yyyy/MM/dd HH:mm').format(_currentDueTime),
                                     style: const TextStyle(
-                                      color: CupertinoColors.activeBlue, // 改成藍色提示可點擊
+                                      color: CupertinoColors.activeBlue, 
                                       fontSize: 16,
                                     ),
                                   ),
@@ -240,9 +227,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                             ),
                           ],
                         ),
-                        
                         const SizedBox(height: 25),
-                        // [新增] 倒數計時面板
                         const Text("距離結束還有", style: TextStyle(color: Colors.grey, fontSize: 12)),
                         const SizedBox(height: 8),
                         Container(
@@ -273,22 +258,12 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  
-                  // 備註區域
-                  const Text(
-                    "  備註",
-                    style: TextStyle(
-                      color: Colors.grey,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  const Text("  備註", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 5),
                   Container(
                     height: 200,
                     decoration: BoxDecoration(
-                      color: isDarkMode 
-                          ? CupertinoColors.darkBackgroundGray 
-                          : CupertinoColors.white,
+                      color: isDarkMode ? CupertinoColors.darkBackgroundGray : CupertinoColors.white,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: CupertinoTextField(
@@ -297,17 +272,12 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                       maxLines: null,
                       decoration: null,
                       padding: const EdgeInsets.all(20),
-                      style: TextStyle(
-                        color: isDarkMode ? Colors.white : Colors.black,
-                      ),
-                      onChanged: (val) => widget.task.note = val,
+                      style: TextStyle(color: isDarkMode ? Colors.white : Colors.black),
                     ),
                   ),
                 ],
               ),
             ),
-            
-            // 刪除按鈕
             Padding(
               padding: const EdgeInsets.all(20),
               child: SizedBox(
@@ -315,13 +285,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 child: CupertinoButton(
                   color: CupertinoColors.systemRed.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(15),
-                  child: const Text(
-                    "刪除此事項",
-                    style: TextStyle(
-                      color: CupertinoColors.systemRed,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  child: const Text("刪除此事項", style: TextStyle(color: CupertinoColors.systemRed, fontWeight: FontWeight.bold)),
                   onPressed: () {
                     showCupertinoDialog(
                       context: context,
@@ -355,43 +319,22 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     );
   }
 
-  // 小組件：時間數字方塊
   Widget _buildTimeBox(String value, String label, bool isDark, {bool isRed = false}) {
     Color textColor = isRed 
         ? CupertinoColors.systemRed 
         : (isDark ? Colors.white : Colors.black87);
-        
     return Column(
       children: [
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.bold,
-            fontFamily: "Courier", // 等寬字體比較好看
-            color: textColor,
-          ),
-        ),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 10, color: Colors.grey),
-        ),
+        Text(value, style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, fontFamily: "Courier", color: textColor)),
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
       ],
     );
   }
 
-  // 小組件：冒號分隔符
   Widget _buildSeparator(bool isDark) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
-      child: Text(
-        ":",
-        style: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-          color: isDark ? Colors.white54 : Colors.black26,
-        ),
-      ),
+      child: Text(":", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: isDark ? Colors.white54 : Colors.black26)),
     );
   }
 }

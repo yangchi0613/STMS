@@ -1,6 +1,6 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
-import 'home_screen.dart';
+import 'package:flutter/material.dart'; // 為了使用 Colors
+import 'package:firebase_auth/firebase_auth.dart'; // [核心] 引入 Firebase Auth
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -10,23 +10,120 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  int _selectedSegment = 0; // 0 for Login, 1 for Register
+  int _selectedSegment = 0; // 0: 登入, 1: 註冊
   final TextEditingController _usernameController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmPasswordController =
-      TextEditingController();
   final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
+
+  bool _isLoading = false; // 用來控制轉圈圈
 
   @override
   void dispose() {
     _usernameController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _emailController.dispose();
     super.dispose();
   }
 
-  // 封裝一個通用的 CupertinoTextField 樣式
+  // 顯示錯誤訊息的彈窗
+  void _showErrorDialog(String message) {
+    showCupertinoDialog(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text("發生錯誤"),
+        content: Text(message),
+        actions: [
+          CupertinoDialogAction(
+            child: const Text("確定"),
+            onPressed: () => Navigator.pop(ctx),
+          )
+        ],
+      ),
+    );
+  }
+
+  // [核心] 處理登入與註冊邏輯
+  Future<void> _handleAuth() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final username = _usernameController.text.trim();
+    final confirmPassword = _confirmPasswordController.text.trim();
+
+    // 1. 基本檢查
+    if (email.isEmpty || password.isEmpty) {
+      _showErrorDialog("請輸入電子郵件和密碼");
+      return;
+    }
+
+    if (_selectedSegment == 1) {
+      // 註冊模式額外檢查
+      if (username.isEmpty) {
+        _showErrorDialog("請輸入使用者名稱");
+        return;
+      }
+      if (password != confirmPassword) {
+        _showErrorDialog("兩次密碼輸入不一致");
+        return;
+      }
+      if (password.length < 6) {
+        _showErrorDialog("密碼長度至少需要 6 個字元");
+        return;
+      }
+    }
+
+    // 2. 開始轉圈圈
+    setState(() => _isLoading = true);
+
+    try {
+      if (_selectedSegment == 0) {
+        // --- 登入邏輯 ---
+        await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+        // 成功後 main.dart 的 StreamBuilder 會自動切換頁面，這裡不需要 push
+      } else {
+        // --- 註冊邏輯 ---
+        // A. 建立帳號
+        UserCredential userCredential =
+            await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+
+        // B. 儲存使用者名稱 (更新 Profile)
+        if (userCredential.user != null) {
+          await userCredential.user!.updateDisplayName(username);
+          await userCredential.user!.reload(); // 重新整理使用者資料
+        }
+      }
+    } on FirebaseAuthException catch (e) {
+      // 3. 處理 Firebase 回傳的錯誤
+      String errorMessage = "發生未知錯誤";
+      if (e.code == 'user-not-found') {
+        errorMessage = "找不到此帳號，請先註冊";
+      } else if (e.code == 'wrong-password') {
+        errorMessage = "密碼錯誤";
+      } else if (e.code == 'email-already-in-use') {
+        errorMessage = "此電子郵件已被註冊過";
+      } else if (e.code == 'invalid-email') {
+        errorMessage = "電子郵件格式不正確";
+      } else if (e.code == 'weak-password') {
+        errorMessage = "密碼太弱";
+      }
+      _showErrorDialog(errorMessage);
+    } catch (e) {
+      _showErrorDialog(e.toString());
+    } finally {
+      // 4. 停止轉圈圈
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   Widget _buildTextField({
     required TextEditingController controller,
     required String placeholder,
@@ -48,12 +145,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 判斷是否為註冊模式
     final bool isRegisterMode = _selectedSegment == 1;
 
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
-        middle: Text(isRegisterMode ? '註冊' : '登入'),
+        middle: Text(isRegisterMode ? '註冊帳號' : '登入系統'),
       ),
       child: SafeArea(
         child: Padding(
@@ -61,160 +157,85 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // 登入/註冊 切換按鈕 (此處已固定，無需修改)
-              Row(
-                children: [
-                  Expanded(
-                    child: CupertinoButton(
-                      onPressed: () {
-                        setState(() {
-                          _selectedSegment = 0;
-                        });
-                      },
-                      color: _selectedSegment == 0
-                          ? CupertinoColors.activeBlue
-                          : CupertinoColors.systemGrey6,
-                      child: Text(
-                        '登入',
-                        style: TextStyle(
-                          color: _selectedSegment == 0
-                              ? CupertinoColors.white
-                              : CupertinoColors.activeBlue,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: CupertinoButton(
-                      onPressed: () {
-                        setState(() {
-                          _selectedSegment = 1;
-                        });
-                      },
-                      color: _selectedSegment == 1
-                          ? CupertinoColors.activeBlue
-                          : CupertinoColors.systemGrey6,
-                      child: Text(
-                        '註冊',
-                        style: TextStyle(
-                          color: _selectedSegment == 1
-                              ? CupertinoColors.white
-                              : CupertinoColors.activeBlue,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+              // 切換按鈕
+              SizedBox(
+                width: double.infinity,
+                child: CupertinoSegmentedControl<int>(
+                  children: const {
+                    0: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20),
+                        child: Text("登入")),
+                    1: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20),
+                        child: Text("註冊")),
+                  },
+                  onValueChanged: (int val) {
+                    setState(() {
+                      _selectedSegment = val;
+                      _usernameController.clear();
+                      _emailController.clear();
+                      _passwordController.clear();
+                      _confirmPasswordController.clear();
+                    });
+                  },
+                  groupValue: _selectedSegment,
+                ),
               ),
 
               const SizedBox(height: 32),
 
-              // 使用者名稱 (登入/註冊皆有)
+              // 註冊時才顯示的使用者名稱
+              if (isRegisterMode) ...[
+                _buildTextField(
+                  controller: _usernameController,
+                  placeholder: '使用者名稱 (暱稱)',
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // 電子郵件 (登入註冊都要)
               _buildTextField(
-                controller: _usernameController,
-                placeholder: '使用者名稱',
+                controller: _emailController,
+                placeholder: '電子郵件',
+                keyboardType: TextInputType.emailAddress,
               ),
 
               const SizedBox(height: 16),
 
-              // 電子郵件 (僅註冊有，使用 Visibility 保持空間)
-              Visibility(
-                visible: isRegisterMode,
-                maintainSize: true, // 保持佔用空間
-                maintainAnimation: true,
-                maintainState: true,
-                child: Column(
-                  children: [
-                    _buildTextField(
-                      controller: _emailController,
-                      placeholder: '電子郵件',
-                      keyboardType: TextInputType.emailAddress,
-                    ),
-                    const SizedBox(height: 16), // Email 下方的間距
-                  ],
-                ),
-              ),
-
-              // 密碼 (登入/註冊皆有)
+              // 密碼
               _buildTextField(
                 controller: _passwordController,
                 placeholder: '密碼',
                 obscureText: true,
               ),
 
-              const SizedBox(height: 16),
-
-              // 確認密碼 (僅註冊有，使用 Visibility 保持空間)
-              Visibility(
-                visible: isRegisterMode,
-                maintainSize: true, // 保持佔用空間
-                maintainAnimation: true,
-                maintainState: true,
-                child: _buildTextField(
+              // 註冊時才顯示的確認密碼
+              if (isRegisterMode) ...[
+                const SizedBox(height: 16),
+                _buildTextField(
                   controller: _confirmPasswordController,
-                  placeholder: '確認密碼',
+                  placeholder: '再次確認密碼',
                   obscureText: true,
                 ),
-              ),
+              ],
 
               const SizedBox(height: 32),
 
-              // 主要動作按鈕
-              CupertinoButton.filled(
-                child: Text(isRegisterMode ? '註冊' : '登入'),
-                onPressed: () {
-                  if (_selectedSegment == 0) {
-                    // TODO: Implement login logic
-                    _performAction(
-                      '登入',
-                      _usernameController.text,
-                      _passwordController.text,
-                    );
-                  } else {
-                    // TODO: Implement registration logic
-                    _performAction(
-                      '註冊',
-                      _usernameController.text,
-                      _passwordController.text,
-                      _emailController.text,
-                      _confirmPasswordController.text,
-                    );
-                  }
-
-                  // 導航到 HomeScreen
-                  Navigator.of(context).pushReplacement(
-                    CupertinoPageRoute(
-                      builder: (context) => const HomeScreen(),
-                    ),
-                  );
-                },
-              ),
+              // 按鈕
+              if (_isLoading)
+                const CupertinoActivityIndicator()
+              else
+                SizedBox(
+                  width: double.infinity,
+                  child: CupertinoButton.filled(
+                    child: Text(isRegisterMode ? '註冊並登入' : '登入'),
+                    onPressed: _handleAuth,
+                  ),
+                ),
             ],
           ),
         ),
       ),
     );
-  }
-
-  // 簡易的動作執行函式（可替換為實際的登入/註冊邏輯）
-  void _performAction(
-    String action,
-    String username,
-    String password, [
-    String? email,
-    String? confirmPassword,
-  ]) {
-    print('$action 資訊:');
-    print('使用者名稱: $username');
-    print('密碼: $password');
-    if (action == '註冊') {
-      print('電子郵件: $email');
-      print('確認密碼: $confirmPassword');
-      if (password != confirmPassword) {
-        print('錯誤: 密碼與確認密碼不一致！');
-        // 實際應用中應該在這裡顯示錯誤訊息給使用者
-      }
-    }
   }
 }
