@@ -10,7 +10,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  int _selectedSegment = 0; // 0: 登入, 1: 註冊
+  int _selectedSegment = 0; // 登入或註冊
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -73,17 +73,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       if (_selectedSegment == 0) {
-        // --- 登入邏輯 ---
         await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: email,
           password: password,
         );
-        // [修正] 登入成功後，如果這個頁面是被 push 上來的（殭屍頁面），就把它關掉
         if (mounted && Navigator.canPop(context)) {
            Navigator.pop(context);
         }
       } else {
-        // --- 註冊邏輯 ---
         UserCredential userCredential =
             await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: email,
@@ -94,7 +91,6 @@ class _LoginScreenState extends State<LoginScreen> {
           await userCredential.user!.updateDisplayName(username);
           await userCredential.user!.reload();
         }
-        // [修正] 註冊成功後同理
         if (mounted && Navigator.canPop(context)) {
            Navigator.pop(context);
         }
@@ -224,9 +220,95 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Text(isRegisterMode ? '註冊並登入' : '登入'),
                   ),
                 ),
+              if (!isRegisterMode) ...[
+                const SizedBox(height: 16),
+                CupertinoButton(
+                  child: const Text('忘記密碼？'),
+                  onPressed: () => _showForgotPasswordDialog(context),
+                ),
+              ],
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showForgotPasswordDialog(BuildContext context) {
+    final emailController = TextEditingController();
+    showCupertinoDialog(
+      context: context,
+      builder: (context) {
+        return CupertinoAlertDialog(
+          title: const Text('重設密碼'),
+          content: Column(
+            children: [
+              const SizedBox(height: 16),
+              const Text('請輸入您的電子郵件，我們將會傳送重設密碼的連結給您。'),
+              const SizedBox(height: 16),
+              CupertinoTextField(
+                controller: emailController,
+                placeholder: '電子郵件',
+                keyboardType: TextInputType.emailAddress,
+              ),
+            ],
+          ),
+          actions: [
+            CupertinoDialogAction(
+              child: const Text('取消'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              child: const Text('傳送'),
+              onPressed: () async {
+                final email = emailController.text.trim();
+                if (email.isEmpty) {
+                  _showErrorDialog('請輸入電子郵件');
+                  return;
+                }
+                
+                // 關閉對話框
+                Navigator.of(context).pop();
+
+                setState(() => _isLoading = true);
+                try {
+                  await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+                   _showSuccessDialog('重設密碼的郵件已寄出，請檢查您的信箱。');
+                } on FirebaseAuthException catch (e) {
+                  String errorMessage = '操作失敗';
+                  if (e.code == 'user-not-found' || e.code == 'invalid-email') {
+                    errorMessage = '找不到與此電子郵件相關聯的帳號';
+                  }
+                  _showErrorDialog(errorMessage);
+                } catch(e) {
+                  _showErrorDialog('發生未知錯誤');
+                } finally {
+                   if (mounted) {
+                    setState(() => _isLoading = false);
+                  }
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+    void _showSuccessDialog(String message) {
+    showCupertinoDialog(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text("成功"),
+        content: Text(message),
+        actions: [
+          CupertinoDialogAction(
+            child: const Text("好的"),
+            onPressed: () => Navigator.pop(ctx),
+          )
+        ],
       ),
     );
   }

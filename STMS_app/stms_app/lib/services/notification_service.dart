@@ -6,11 +6,11 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
 
-  // 1. 初始化
+  // 初始化
   static Future<void> init() async {
     tz.initializeTimeZones(); // 初始化時區資料
 
-    // Android 設定：使用預設的 app icon (@mipmap/ic_launcher)
+    // Android 設定
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
@@ -30,7 +30,7 @@ class NotificationService {
     await _notifications.initialize(settings);
   }
 
-  // 2. 請求權限 (Android 13+ 需要)
+  // 請求權限
   static Future<void> requestPermissions() async {
     final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
         _notifications.resolvePlatformSpecificImplementation<
@@ -39,7 +39,7 @@ class NotificationService {
     await androidImplementation?.requestNotificationsPermission();
   }
 
-  // 3. 設定排程通知
+  // 設定排程通知
   static Future<void> scheduleNotification({
     required int id,
     required String title,
@@ -64,14 +64,13 @@ class NotificationService {
         ),
         iOS: DarwinNotificationDetails(),
       ),
-      // [關鍵] 使用 v17+ 兼容寫法，若 intl 升級成功，此處可根據套件版本自動適配
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
     );
   }
 
-  // 4. 取消通知 (當任務被刪除或完成時)
+  // 取消通知
   static Future<void> cancelNotification(int id) async {
     await _notifications.cancel(id);
   }

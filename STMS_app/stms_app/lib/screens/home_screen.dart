@@ -6,7 +6,7 @@ import 'package:table_calendar/table_calendar.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/task.dart';
-import '../services/notification_service.dart'; // [新增]
+import '../services/notification_service.dart';
 import 'task_detail_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
@@ -35,7 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // [新增] 進入首頁時，請求通知權限
+    // 進入首頁時，請求通知權限
     NotificationService.requestPermissions();
 
     _timer = Timer.periodic(const Duration(seconds: 10), (timer) {
@@ -49,9 +49,10 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  // [修改] 新增任務 + 設定通知
-  Future<void> addTask(String title, String category, String priority, DateTime date) async {
-    // 1. 存入 Firebase
+  // 新增任務 + 設定通知
+  Future<void> addTask(
+      String title, String category, String priority, DateTime date) async {
+    // 存入 Firebase
     DocumentReference docRef = await tasksCollection.add({
       'title': title,
       'category': category,
@@ -61,10 +62,10 @@ class _HomeScreenState extends State<HomeScreen> {
       'note': '',
     });
 
-    // 2. [新增] 設定排程通知
+    // 設定排程通知
     // 使用 hashCode 將 String ID 轉為 int ID
-    int notificationId = docRef.id.hashCode; 
-    
+    int notificationId = docRef.id.hashCode;
+
     await NotificationService.scheduleNotification(
       id: notificationId,
       title: "⏰ 任務提醒：$title",
@@ -73,25 +74,25 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // [修改] 刪除任務 + 取消通知
+  // 刪除任務 + 取消通知
   Future<void> deleteTask(String taskId, {bool completed = false}) async {
     if (completed) {
       setState(() {
         completedTaskCount++;
       });
     }
-    
+
     await tasksCollection.doc(taskId).delete();
 
-    // [新增] 取消該任務的通知
+    // 取消該任務的通知
     await NotificationService.cancelNotification(taskId.hashCode);
   }
 
-  // [修改] 更新任務 + 重設通知
+  // 更新任務 + 重設通知
   Future<void> updateTask(Task task) async {
     await tasksCollection.doc(task.id).update(task.toMap());
 
-    // [新增] 重設通知 (先取消舊的，再設新的)
+    // 重設通知
     await NotificationService.cancelNotification(task.id.hashCode);
     await NotificationService.scheduleNotification(
       id: task.id.hashCode,
@@ -139,10 +140,12 @@ class _HomeScreenState extends State<HomeScreen> {
       stream: tasksCollection.snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return const CupertinoPageScaffold(child: Center(child: Text("連線錯誤")));
+          return const CupertinoPageScaffold(
+              child: Center(child: Text("連線錯誤")));
         }
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const CupertinoPageScaffold(child: Center(child: CupertinoActivityIndicator()));
+          return const CupertinoPageScaffold(
+              child: Center(child: CupertinoActivityIndicator()));
         }
 
         final List<Task> tasks = snapshot.data!.docs.map((doc) {
@@ -254,7 +257,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     Container(
                       padding: const EdgeInsets.fromLTRB(20, 15, 20, 10),
                       decoration: BoxDecoration(
-                        color: CupertinoColors.systemGrey6.withValues(alpha: 0.5),
+                        color:
+                            CupertinoColors.systemGrey6.withValues(alpha: 0.5),
                         borderRadius: const BorderRadius.vertical(
                           top: Radius.circular(20),
                         ),
@@ -695,20 +699,17 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 30),
               const Text("待辦類別分佈",
-                  style:
-                      TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
               const SizedBox(height: 15),
               Expanded(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: categories.map((cat) {
-                    int count =
-                        tasks.where((t) => t.category == cat).length;
+                    int count = tasks.where((t) => t.category == cat).length;
                     double percentage =
                         tasks.isEmpty ? 0 : count / (tasks.length + 1);
-                    double heightFactor =
-                        percentage == 0 ? 0.05 : percentage;
+                    double heightFactor = percentage == 0 ? 0.05 : percentage;
 
                     return Column(
                       mainAxisAlignment: MainAxisAlignment.end,
@@ -723,7 +724,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           width: 40,
                           height: 150 * heightFactor + 20,
                           decoration: BoxDecoration(
-                            color: CupertinoColors.activeBlue.withValues(alpha: 0.6),
+                            color: CupertinoColors.activeBlue
+                                .withValues(alpha: 0.6),
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
@@ -772,8 +774,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const Spacer(),
             if (!isEnabled)
-              const Icon(CupertinoIcons.lock_fill,
-                  size: 14, color: Colors.grey)
+              const Icon(CupertinoIcons.lock_fill, size: 14, color: Colors.grey)
             else
               const Icon(
                 CupertinoIcons.chevron_right,
@@ -786,12 +787,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- Add Task Modal (邏輯完全保留) ---
+  // 新增事項
   void _showAddTaskModal(BuildContext context) {
     String currentTitle = "";
-    DateTime selectedDate = DateTime.now(); 
-    String selectedCategory =
-        categories.isNotEmpty ? categories.first : "未分類";
+    DateTime selectedDate = DateTime.now();
+    String selectedCategory = categories.isNotEmpty ? categories.first : "未分類";
 
     bool isAnalyzing = false;
 
@@ -799,7 +799,7 @@ class _HomeScreenState extends State<HomeScreen> {
     void analyzeAndSet(String input, StateSetter setModalState) {
       String lowerInput = input.toLowerCase();
       DateTime now = DateTime.now();
-      DateTime newDate = selectedDate; 
+      DateTime newDate = selectedDate;
       String? newCategory = selectedCategory;
       bool dateFound = false;
 
@@ -887,7 +887,7 @@ class _HomeScreenState extends State<HomeScreen> {
             final isDarkMode =
                 CupertinoTheme.of(context).brightness == Brightness.dark;
             return Container(
-              height: 480, 
+              height: 480,
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: isDarkMode
@@ -931,9 +931,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                   const SizedBox(height: 10),
-
                   CupertinoTextField(
-                    placeholder: "", 
+                    placeholder: "",
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: CupertinoColors.systemGrey6,
@@ -944,7 +943,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
                   const SizedBox(height: 30),
-
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
@@ -1025,7 +1023,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           }
                         },
                       ),
-                      
                       _buildCircleBtn(
                         CupertinoIcons.wand_stars,
                         "AI 功能",
@@ -1100,8 +1097,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Icon(icon, color: color, size: 28),
           ),
           const SizedBox(height: 8),
-          Text(title,
-              style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
           Text(
             sub,
             style: TextStyle(

@@ -74,22 +74,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
-
               const SizedBox(height: 20),
-
               CupertinoButton(
-                color: CupertinoColors.destructiveRed.withValues(alpha: 0.1),
-                child: const Text(
-                  '登出',
-                  style: TextStyle(color: CupertinoColors.destructiveRed),
-                ),
+                color: CupertinoColors.destructiveRed,
                 onPressed: () async {
                   await FirebaseAuth.instance.signOut();
-                  // [修正] 登出後退回根目錄，讓 main.dart 接手
                   if (context.mounted) {
                     Navigator.of(context).popUntil((route) => route.isFirst);
                   }
                 },
+                child: const Text('登出'),
               ),
             ],
           ),

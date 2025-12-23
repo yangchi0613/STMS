@@ -1,8 +1,8 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart'; // 為了使用 Colors
-import 'package:firebase_auth/firebase_auth.dart'; // [核心]
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../theme_manager.dart';
-import 'login_screen.dart'; // 為了在需要時導向重新登入
+import 'login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -14,7 +14,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   User? get user => FirebaseAuth.instance.currentUser;
 
-  // --- 通用：顯示輸入框彈窗 (用於改名、改Email) ---
+  // 編輯對話框
   void _showEditDialog({
     required String title,
     required String initialValue,
@@ -55,22 +55,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // --- 功能 A: 修改顯示名稱 ---
+  // 修改顯示名稱
   Future<void> _updateDisplayName(String newName) async {
     try {
       await user?.updateDisplayName(newName);
       await user?.reload(); // 強制重新整理使用者資料
-      setState(() {}); // 更新畫面
+      setState(() {}); 
       _showSuccessDialog("暱稱已更新");
     } catch (e) {
       _showErrorDialog("更新失敗：$e");
     }
   }
 
-  // --- 功能 B: 修改 Email ---
+  // 修改 Email
   Future<void> _updateEmail(String newEmail) async {
     try {
-      // 注意：這通常需要重新驗證 (re-authenticate)
+      // 需要重新驗證
       await user?.verifyBeforeUpdateEmail(newEmail); // 發送驗證信到新信箱
       _showSuccessDialog("驗證信已寄出！\n請至新信箱 $newEmail 收信驗證後，變更才會生效。");
     } on FirebaseAuthException catch (e) {
@@ -84,64 +84,150 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // --- 功能 C: 修改密碼 ---
+  // 修改密碼
   void _showChangePasswordDialog() {
-    final TextEditingController passController = TextEditingController();
+    final oldPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    bool obscureOldPassword = true;
+    bool obscureNewPassword = true;
+    bool obscureConfirmPassword = true;
+
     showCupertinoDialog(
       context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text("更改密碼"),
-        content: Padding(
-          padding: const EdgeInsets.only(top: 10),
-          child: CupertinoTextField(
-            controller: passController,
-            placeholder: "輸入新密碼 (至少6碼)",
-            obscureText: true,
-            clearButtonMode: OverlayVisibilityMode.editing,
-          ),
-        ),
-        actions: [
-          CupertinoDialogAction(
-            child: const Text("取消"),
-            onPressed: () => Navigator.pop(context),
-          ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            child: const Text("確認更改"),
-            onPressed: () {
-              if (passController.text.length >= 6) {
-                Navigator.pop(context);
-                _updatePassword(passController.text);
-              } else {
-                // 簡單提示
-                passController.clear();
-                passController.text = "密碼太短";
-              }
-            },
-          ),
-        ],
-      ),
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return CupertinoAlertDialog(
+              title: const Text('更改密碼'),
+              content: Column(
+                children: [
+                  const SizedBox(height: 16),
+                  CupertinoTextField(
+                    controller: oldPasswordController,
+                    placeholder: '舊密碼',
+                    obscureText: obscureOldPassword,
+                    prefix: const Padding(
+                      padding: EdgeInsets.only(left: 8.0),
+                      child: Icon(CupertinoIcons.lock_shield),
+                    ),
+                    suffix: CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      child: Icon(obscureOldPassword
+                          ? CupertinoIcons.eye_slash
+                          : CupertinoIcons.eye),
+                      onPressed: () {
+                        setState(() {
+                          obscureOldPassword = !obscureOldPassword;
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  CupertinoTextField(
+                    controller: newPasswordController,
+                    placeholder: '新密碼 (至少6碼)',
+                    obscureText: obscureNewPassword,
+                    prefix: const Padding(
+                      padding: EdgeInsets.only(left: 8.0),
+                      child: Icon(CupertinoIcons.lock),
+                    ),
+                    suffix: CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      child: Icon(obscureNewPassword
+                          ? CupertinoIcons.eye_slash
+                          : CupertinoIcons.eye),
+                      onPressed: () {
+                        setState(() {
+                          obscureNewPassword = !obscureNewPassword;
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  CupertinoTextField(
+                    controller: confirmPasswordController,
+                    placeholder: '確認新密碼',
+                    obscureText: obscureConfirmPassword,
+                    prefix: const Padding(
+                      padding: EdgeInsets.only(left: 8.0),
+                      child: Icon(CupertinoIcons.lock),
+                    ),
+                    suffix: CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      child: Icon(obscureConfirmPassword
+                          ? CupertinoIcons.eye_slash
+                          : CupertinoIcons.eye),
+                      onPressed: () {
+                        setState(() {
+                          obscureConfirmPassword = !obscureConfirmPassword;
+                        });
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                CupertinoDialogAction(
+                  child: const Text('取消'),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                  },
+                ),
+                CupertinoDialogAction(
+                  isDefaultAction: true,
+                  child: const Text('更改'),
+                  onPressed: () async {
+                    // 隱藏鍵盤
+                    FocusScope.of(context).unfocus();
+
+                    if (newPasswordController.text !=
+                        confirmPasswordController.text) {
+                      _showErrorDialog('新密碼不符');
+                      return;
+                    }
+                    if (newPasswordController.text.length < 6) {
+                      _showErrorDialog('密碼長度至少需要 6 位');
+                      return;
+                    }
+
+                    final user = FirebaseAuth.instance.currentUser;
+                    if(user == null || user.email == null) {
+                      _showErrorDialog('無法取得使用者資訊');
+                      return;
+                    }
+
+                    final cred = EmailAuthProvider.credential(
+                        email: user.email!,
+                        password: oldPasswordController.text);
+
+                    try {
+                      await user.reauthenticateWithCredential(cred);
+                      await user.updatePassword(newPasswordController.text);
+                      Navigator.of(dialogContext).pop(); // 關閉對話框
+                      _showSuccessDialog('密碼更改成功！');
+                    } on FirebaseAuthException catch (e) {
+                      String errorMessage = '發生未知錯誤';
+                      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+                        errorMessage = '舊密碼錯誤';
+                      } else if (e.code == 'weak-password') {
+                        errorMessage = '新密碼太弱';
+                      }
+                      _showErrorDialog(errorMessage);
+                    } catch (e) {
+                      _showErrorDialog('操作失敗，請稍後再試');
+                    }
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
-  Future<void> _updatePassword(String newPassword) async {
-    try {
-      await user?.updatePassword(newPassword);
-      _showSuccessDialog("密碼修改成功！下次登入請使用新密碼。");
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'requires-recent-login') {
-        _showReLoginDialog();
-      } else if (e.code == 'weak-password') {
-        _showErrorDialog("密碼強度不足");
-      } else {
-        _showErrorDialog("修改失敗：${e.message}");
-      }
-    } catch (e) {
-      _showErrorDialog("發生錯誤：$e");
-    }
-  }
-
-  // --- 輔助顯示彈窗 ---
+  // 輔助對話框
   void _showErrorDialog(String msg) {
     showCupertinoDialog(
       context: context,
@@ -206,7 +292,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final isDarkMode = themeManager.value == ThemeMode.dark;
-    // 確保拿到最新的 user 資料
+    // 取得最新使用者資料
     final currentUser = FirebaseAuth.instance.currentUser;
 
     return CupertinoPageScaffold(
@@ -219,10 +305,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             CupertinoListSection(
               header: const Text('帳戶資訊'),
               children: [
-                // 1. 編輯暱稱
+                // 編輯暱稱
                 CupertinoListTile(
                   title: const Text('暱稱'),
-                  // 顯示目前名字，如果沒有就是 "未命名"
                   additionalInfo: Text(currentUser?.displayName ?? "未命名"),
                   leading: const Icon(CupertinoIcons.person),
                   trailing: const Icon(CupertinoIcons.pencil, size: 20),
@@ -235,11 +320,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     );
                   },
                 ),
-                // 2. 編輯 Email
+                // 編輯 Email
                 CupertinoListTile(
                   title: const Text('電子郵件'),
                   additionalInfo: SizedBox(
-                    width: 150, // 限制寬度避免超出
+                    width: 150,
                     child: Text(
                       currentUser?.email ?? "",
                       overflow: TextOverflow.ellipsis,
@@ -257,7 +342,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     );
                   },
                 ),
-                // 3. 修改密碼
+                // 修改密碼
                 CupertinoListTile(
                   title: const Text('更改密碼'),
                   leading: const Icon(CupertinoIcons.lock),

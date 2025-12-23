@@ -9,7 +9,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'theme_manager.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'services/notification_service.dart'; // [新增]
+import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,7 +17,7 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // [新增] 初始化通知服務
+  // 初始化通知服務
   await NotificationService.init();
 
   // Load the theme
