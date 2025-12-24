@@ -24,6 +24,8 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime _selectedDay = DateTime.now();
   DateTime _focusedDay = DateTime.now();
   Timer? _timer;
+  
+  // [重點] 用來記錄已經彈窗過的任務 ID，避免每5秒重複彈同一個
   final Set<String> _notifiedTasks = {};
 
   String get uid => FirebaseAuth.instance.currentUser!.uid;
@@ -38,8 +40,11 @@ class _HomeScreenState extends State<HomeScreen> {
     // 進入首頁時，請求通知權限
     NotificationService.requestPermissions();
 
-    _timer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      // 本地計時器保留
+    // [重點] 啟動計時器：每 5 秒檢查一次是否有任務過期
+    _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (mounted) {
+        _checkDueTasks();
+      }
     });
   }
 
@@ -49,10 +54,129 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  // [重點] 檢查過期任務邏輯
+  void _checkDueTasks() {
+    // 查詢狀態是 Pending (未完成) 的任務
+    tasksCollection.where('status', isEqualTo: 'Pending').get().then((snapshot) {
+      final now = DateTime.now();
+      
+      for (var doc in snapshot.docs) {
+        Task task = Task.fromFirestore(doc);
+        
+        // 條件：時間已過 (now > dueTime) 且 還沒在本次執行中通知過
+        if (now.isAfter(task.dueTime) && !_notifiedTasks.contains(task.id)) {
+          
+          setState(() {
+            _notifiedTasks.add(task.id); // 加入清單，鎖住這個任務避免重複彈
+          });
+          
+          // 呼叫彈窗
+          _showTimeoutDialog(task);
+        }
+      }
+    });
+  }
+
+  // [重點] 時間到彈窗 (iOS 風格)
+  void _showTimeoutDialog(Task task) {
+    showCupertinoDialog(
+      context: context,
+      barrierDismissible: false, // 強制使用者一定要選一個
+      builder: (context) => CupertinoAlertDialog(
+        title: const Column(
+          children: [
+            Icon(CupertinoIcons.alarm_fill, color: CupertinoColors.systemRed, size: 50),
+            SizedBox(height: 10),
+            Text("時間到囉！"),
+          ],
+        ),
+        content: Padding(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: Text(
+            "事項「${task.title}」的預定時間已經結束。\n接下來要怎麼做？",
+            style: const TextStyle(fontSize: 15),
+          ),
+        ),
+        actions: [
+          // 按鈕 1: 繼續做 (延時)
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            child: const Text("繼續做 (延時)"),
+            onPressed: () {
+              Navigator.pop(context); // 關閉彈窗
+              _rescheduleTask(task); // 開啟時間選擇器
+            },
+          ),
+          // 按鈕 2: 已完成
+          CupertinoDialogAction(
+            isDestructiveAction: true, // 紅色字體
+            child: const Text("已完成"),
+            onPressed: () {
+              deleteTask(task.id, completed: true); // 標記完成並刪除
+              Navigator.pop(context); // 關閉彈窗
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // [重點] 延時設定 (配合彈窗使用)
+  void _rescheduleTask(Task task) {
+    // 預設時間：如果是過去的時間，就預設為現在+30分鐘，不然就保持原樣
+    DateTime newDate = task.dueTime.isBefore(DateTime.now())
+        ? DateTime.now().add(const Duration(minutes: 30))
+        : task.dueTime;
+
+    showCupertinoModalPopup(
+      context: context,
+      builder: (context) => Container(
+        height: 300,
+        color: CupertinoColors.systemBackground.resolveFrom(context),
+        child: Column(
+          children: [
+            // 頂部工具列
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              color: CupertinoColors.systemGrey6.withValues(alpha: 0.5),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text("選擇新的時間", style: TextStyle(fontWeight: FontWeight.bold)),
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    child: const Text("確定延期"),
+                    onPressed: () {
+                      task.dueTime = newDate;
+                      updateTask(task); // 更新 Firebase + 重設通知
+                      
+                      // 移除已通知標記，這樣下次時間到還會再通知
+                      _notifiedTasks.remove(task.id); 
+                      
+                      Navigator.pop(context);
+                    },
+                  ),
+                ],
+              ),
+            ),
+            // 時間選擇器
+            Expanded(
+              child: CupertinoDatePicker(
+                initialDateTime: newDate,
+                mode: CupertinoDatePickerMode.dateAndTime,
+                use24hFormat: true,
+                onDateTimeChanged: (val) => newDate = val,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // 新增任務 + 設定通知
   Future<void> addTask(
       String title, String category, String priority, DateTime date) async {
-    // 存入 Firebase
     DocumentReference docRef = await tasksCollection.add({
       'title': title,
       'category': category,
@@ -62,8 +186,6 @@ class _HomeScreenState extends State<HomeScreen> {
       'note': '',
     });
 
-    // 設定排程通知
-    // 使用 hashCode 將 String ID 轉為 int ID
     int notificationId = docRef.id.hashCode;
 
     await NotificationService.scheduleNotification(
@@ -83,8 +205,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     await tasksCollection.doc(taskId).delete();
-
-    // 取消該任務的通知
     await NotificationService.cancelNotification(taskId.hashCode);
   }
 
@@ -92,45 +212,12 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> updateTask(Task task) async {
     await tasksCollection.doc(task.id).update(task.toMap());
 
-    // 重設通知
     await NotificationService.cancelNotification(task.id.hashCode);
     await NotificationService.scheduleNotification(
       id: task.id.hashCode,
       title: "⏰ 任務提醒：${task.title}",
       body: "您的事項「${task.title}」時間到了！",
       scheduledTime: task.dueTime,
-    );
-  }
-
-  void _rescheduleTask(Task task) {
-    DateTime newDate = task.dueTime;
-    showCupertinoModalPopup(
-      context: context,
-      builder: (context) => Container(
-        height: 300,
-        color: CupertinoColors.systemBackground.resolveFrom(context),
-        child: Column(
-          children: [
-            SizedBox(
-              height: 200,
-              child: CupertinoDatePicker(
-                initialDateTime: newDate.add(const Duration(minutes: 30)),
-                mode: CupertinoDatePickerMode.dateAndTime,
-                onDateTimeChanged: (val) => newDate = val,
-              ),
-            ),
-            CupertinoButton(
-              child: const Text("確定延期"),
-              onPressed: () {
-                task.dueTime = newDate;
-                updateTask(task); // 更新時會自動重設通知
-                _notifiedTasks.remove(task.id);
-                Navigator.pop(context);
-              },
-            )
-          ],
-        ),
-      ),
     );
   }
 
@@ -338,6 +425,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               GestureDetector(
                 onTap: () {
+                  // 手動點擊圓圈完成
                   showCupertinoDialog(
                     context: context,
                     builder: (context) => CupertinoAlertDialog(
@@ -650,6 +738,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 20),
+              // Overview
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -701,6 +790,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const Text("待辦類別分佈",
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
               const SizedBox(height: 15),
+              // Charts
               Expanded(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -787,7 +877,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 新增事項
   void _showAddTaskModal(BuildContext context) {
     String currentTitle = "";
     DateTime selectedDate = DateTime.now();
@@ -795,7 +884,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     bool isAnalyzing = false;
 
-    // AI 分析邏輯
     void analyzeAndSet(String input, StateSetter setModalState) {
       String lowerInput = input.toLowerCase();
       DateTime now = DateTime.now();
@@ -848,7 +936,6 @@ class _HomeScreenState extends State<HomeScreen> {
         newDate = DateTime(now.year, now.month, now.day, hour, 0);
       }
 
-      // 類別偵測
       if (lowerInput.contains("school") ||
           lowerInput.contains("exam") ||
           lowerInput.contains("class") ||
@@ -999,7 +1086,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         Navigator.pop(c);
                                       },
                                     ),
-                                  ),
+                                  ).toList(),
                                   CupertinoActionSheetAction(
                                     child: const Text("新增類別..."),
                                     onPressed: () {
@@ -1014,9 +1101,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                 ],
                                 cancelButton: CupertinoActionSheetAction(
+                                  child: const Text("取消"),
                                   isDestructiveAction: true,
                                   onPressed: () => Navigator.pop(c),
-                                  child: const Text("取消"),
                                 ),
                               ),
                             );
