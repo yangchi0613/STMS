@@ -1,7 +1,22 @@
+buildscript {
+    val kotlinVersion by extra("1.9.23")
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
+    }
+}
+
 allprojects {
     repositories {
         google()
         mavenCentral()
+    }
+    tasks.withType<JavaCompile>().configureEach {
+        sourceCompatibility = "17"
+        targetCompatibility = "17"
     }
 }
 
