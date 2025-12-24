@@ -21,11 +21,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int completedTaskCount = 0;
   List<String> categories = ["學校", "生活", "日常"];
-  DateTime _selectedDay = DateTime.now();
-  DateTime _focusedDay = DateTime.now();
   Timer? _timer;
-  
-  // [重點] 用來記錄已經彈窗過的任務 ID，避免每5秒重複彈同一個
+
+  // 用來記錄已經彈窗過的任務 ID，避免每5秒重複彈同一個
   final Set<String> _notifiedTasks = {};
 
   String get uid => FirebaseAuth.instance.currentUser!.uid;
@@ -40,7 +38,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // 進入首頁時，請求通知權限
     NotificationService.requestPermissions();
 
-    // [重點] 啟動計時器：每 5 秒檢查一次是否有任務過期
+    // 啟動計時器：每 5 秒檢查一次是否有任務過期
     _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
       if (mounted) {
         _checkDueTasks();
@@ -54,22 +52,24 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  // [重點] 檢查過期任務邏輯
+  // 檢查過期任務邏輯
   void _checkDueTasks() {
     // 查詢狀態是 Pending (未完成) 的任務
-    tasksCollection.where('status', isEqualTo: 'Pending').get().then((snapshot) {
+    tasksCollection
+        .where('status', isEqualTo: 'Pending')
+        .get()
+        .then((snapshot) {
       final now = DateTime.now();
-      
+
       for (var doc in snapshot.docs) {
         Task task = Task.fromFirestore(doc);
-        
+
         // 條件：時間已過 (now > dueTime) 且 還沒在本次執行中通知過
         if (now.isAfter(task.dueTime) && !_notifiedTasks.contains(task.id)) {
-          
           setState(() {
             _notifiedTasks.add(task.id); // 加入清單，鎖住這個任務避免重複彈
           });
-          
+
           // 呼叫彈窗
           _showTimeoutDialog(task);
         }
@@ -77,7 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // [重點] 時間到彈窗 (iOS 風格)
+  // 時間到彈窗 (iOS 風格)
   void _showTimeoutDialog(Task task) {
     showCupertinoDialog(
       context: context,
@@ -85,7 +85,8 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) => CupertinoAlertDialog(
         title: const Column(
           children: [
-            Icon(CupertinoIcons.alarm_fill, color: CupertinoColors.systemRed, size: 50),
+            Icon(CupertinoIcons.alarm_fill,
+                color: CupertinoColors.systemRed, size: 50),
             SizedBox(height: 10),
             Text("時間到囉！"),
           ],
@@ -121,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // [重點] 延時設定 (配合彈窗使用)
+  // 延時設定 (配合彈窗使用)
   void _rescheduleTask(Task task) {
     // 預設時間：如果是過去的時間，就預設為現在+30分鐘，不然就保持原樣
     DateTime newDate = task.dueTime.isBefore(DateTime.now())
@@ -142,17 +143,18 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text("選擇新的時間", style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text("選擇新的時間",
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                   CupertinoButton(
                     padding: EdgeInsets.zero,
                     child: const Text("確定延期"),
                     onPressed: () {
                       task.dueTime = newDate;
                       updateTask(task); // 更新 Firebase + 重設通知
-                      
+
                       // 移除已通知標記，這樣下次時間到還會再通知
-                      _notifiedTasks.remove(task.id); 
-                      
+                      _notifiedTasks.remove(task.id);
+
                       Navigator.pop(context);
                     },
                   ),
@@ -175,8 +177,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // 新增任務 + 設定通知
-  Future<void> addTask(
-      String title, String category, String priority, DateTime date) async {
+  Future<void> addTask(String title, String category, String priority,
+      DateTime date, String recurrence) async {
     DocumentReference docRef = await tasksCollection.add({
       'title': title,
       'category': category,
@@ -184,6 +186,7 @@ class _HomeScreenState extends State<HomeScreen> {
       'status': 'Pending',
       'dueTime': Timestamp.fromDate(date),
       'note': '',
+      'recurrence': recurrence, // 新增週期欄位
     });
 
     int notificationId = docRef.id.hashCode;
@@ -199,6 +202,33 @@ class _HomeScreenState extends State<HomeScreen> {
   // 刪除任務 + 取消通知
   Future<void> deleteTask(String taskId, {bool completed = false}) async {
     if (completed) {
+      //取得任務資料
+      DocumentSnapshot doc = await tasksCollection.doc(taskId).get();
+      if (doc.exists) {
+        Task task = Task.fromFirestore(doc);
+
+        if (task.recurrence != '不重複') {
+          DateTime nextDueTime;
+          switch (task.recurrence) {
+            case '每天':
+              nextDueTime = task.dueTime.add(const Duration(days: 1));
+              break;
+            case '每週':
+              nextDueTime = task.dueTime.add(const Duration(days: 7));
+              break;
+            case '每月':
+              nextDueTime = DateTime(task.dueTime.year, task.dueTime.month + 1,
+                  task.dueTime.day, task.dueTime.hour, task.dueTime.minute);
+              break;
+            default:
+              nextDueTime = task.dueTime;
+          }
+          // 新增下一個任務
+          await addTask(task.title, task.category, task.priority, nextDueTime,
+              task.recurrence);
+        }
+      }
+
       setState(() {
         completedTaskCount++;
       });
@@ -258,7 +288,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           tabBuilder: (context, index) {
             if (index == 0) return _buildHomeTab(tasks);
-            if (index == 1) return _buildCalendarTab(tasks);
+            if (index == 1)
+              return _CalendarTab(parentState: this, tasks: tasks);
             return _buildMoreTab(tasks);
           },
         );
@@ -538,116 +569,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildCalendarTab(List<Task> tasks) {
-    List<Task> dailyTasks =
-        tasks.where((t) => isSameDay(t.dueTime, _selectedDay)).toList();
-
-    return CupertinoPageScaffold(
-      navigationBar: const CupertinoNavigationBar(middle: Text('行事曆')),
-      child: SafeArea(
-        child: Column(
-          children: [
-            Container(
-              margin: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: CupertinoTheme.of(context).brightness == Brightness.dark
-                    ? CupertinoColors.darkBackgroundGray
-                    : Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color:
-                        CupertinoTheme.of(context).brightness == Brightness.dark
-                            ? Colors.white.withOpacity(0.05)
-                            : Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                  ),
-                ],
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: TableCalendar(
-                  locale: 'zh_TW',
-                  firstDay: DateTime.utc(2020, 1, 1),
-                  lastDay: DateTime.utc(2030, 12, 31),
-                  focusedDay: _focusedDay,
-                  calendarFormat: CalendarFormat.month,
-                  selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-                  onDaySelected: (selectedDay, focusedDay) {
-                    setState(() {
-                      _selectedDay = selectedDay;
-                      _focusedDay = focusedDay;
-                    });
-                  },
-                  eventLoader: (day) {
-                    return tasks
-                        .where((task) => isSameDay(task.dueTime, day))
-                        .toList();
-                  },
-                  calendarStyle: const CalendarStyle(
-                    todayDecoration: BoxDecoration(
-                      color: CupertinoColors.activeBlue,
-                      shape: BoxShape.circle,
-                    ),
-                    selectedDecoration: BoxDecoration(
-                      color: CupertinoColors.systemRed,
-                      shape: BoxShape.circle,
-                    ),
-                    markerDecoration: BoxDecoration(
-                      color: CupertinoColors.systemGrey,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  headerStyle: const HeaderStyle(
-                    formatButtonVisible: false,
-                    titleCentered: true,
-                  ),
-                ),
-              ),
-            ),
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color:
-                      CupertinoTheme.of(context).brightness == Brightness.dark
-                          ? CupertinoColors.darkBackgroundGray
-                          : CupertinoColors.white,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(30),
-                  ),
-                ),
-                child: ListView(
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    Text(
-                      "${DateFormat('M月d日', 'zh_TW').format(_selectedDay)} 待辦事項",
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    if (dailyTasks.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 20),
-                        child: Text(
-                          "今天沒有事項！",
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      )
-                    else
-                      ...dailyTasks.map((t) => _buildTaskItem(t)),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildMoreTab(List<Task> tasks) {
     return CupertinoPageScaffold(
       navigationBar: const CupertinoNavigationBar(middle: Text('更多功能')),
@@ -881,90 +802,7 @@ class _HomeScreenState extends State<HomeScreen> {
     String currentTitle = "";
     DateTime selectedDate = DateTime.now();
     String selectedCategory = categories.isNotEmpty ? categories.first : "未分類";
-
-    bool isAnalyzing = false;
-
-    void analyzeAndSet(String input, StateSetter setModalState) {
-      String lowerInput = input.toLowerCase();
-      DateTime now = DateTime.now();
-      DateTime newDate = selectedDate;
-      String? newCategory = selectedCategory;
-      bool dateFound = false;
-
-      if (lowerInput.contains("tomorrow")) {
-        newDate = now.add(const Duration(days: 1));
-        dateFound = true;
-      }
-
-      if (lowerInput.contains("tonight")) {
-        newDate = DateTime(now.year, now.month, now.day, 19, 0);
-        dateFound = true;
-      }
-
-      int? hour;
-      if (lowerInput.contains("morning")) hour = 9;
-      if (lowerInput.contains("afternoon")) hour = 14;
-      if (lowerInput.contains("evening")) hour = 19;
-      if (lowerInput.contains("noon")) hour = 12;
-
-      RegExp timeReg = RegExp(r"(\d{1,2})[:.]?(\d{2})?\s*(am|pm)?");
-      var matches = timeReg.allMatches(lowerInput);
-
-      for (var match in matches) {
-        int h = int.parse(match.group(1)!);
-        if (h >= 0 && h <= 24) {
-          int m = match.group(2) != null ? int.parse(match.group(2)!) : 0;
-          String? period = match.group(3);
-          if (period == "pm" && h < 12) h += 12;
-          if (period == "am" && h == 12) h = 0;
-          if (period == null &&
-              (lowerInput.contains("evening") ||
-                  lowerInput.contains("tonight"))) {
-            if (h < 12) h += 12;
-          }
-          hour = h;
-          dateFound = true;
-          newDate = DateTime(newDate.year, newDate.month, newDate.day, h, m);
-        }
-      }
-      if (dateFound && hour != null) {
-        newDate = DateTime(newDate.year, newDate.month, newDate.day, hour, 0);
-      } else if (dateFound && hour == null && lowerInput.contains("tomorrow")) {
-        newDate = DateTime(newDate.year, newDate.month, newDate.day,
-            DateTime.now().hour, DateTime.now().minute);
-      } else if (!dateFound && hour != null) {
-        newDate = DateTime(now.year, now.month, now.day, hour, 0);
-      }
-
-      if (lowerInput.contains("school") ||
-          lowerInput.contains("exam") ||
-          lowerInput.contains("class") ||
-          lowerInput.contains("study") ||
-          lowerInput.contains("homework") ||
-          lowerInput.contains("project")) {
-        newCategory = "學校";
-      } else if (lowerInput.contains("life") ||
-          lowerInput.contains("movie") ||
-          lowerInput.contains("game") ||
-          lowerInput.contains("dinner") ||
-          lowerInput.contains("party") ||
-          lowerInput.contains("sleep") ||
-          lowerInput.contains("date")) {
-        newCategory = "生活";
-      } else if (lowerInput.contains("buy") ||
-          lowerInput.contains("shop") ||
-          lowerInput.contains("clean") ||
-          lowerInput.contains("wash") ||
-          lowerInput.contains("cook") ||
-          lowerInput.contains("daily")) {
-        newCategory = "日常";
-      }
-
-      setModalState(() {
-        selectedDate = newDate;
-        if (newCategory != null) selectedCategory = newCategory;
-      });
-    }
+    String selectedRecurrence = "不重複"; // 用於儲存週期的狀態
 
     showCupertinoModalPopup(
       context: context,
@@ -1000,26 +838,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      const Text("新增事項",
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 18)),
-                      const Spacer(),
-                      if (isAnalyzing) ...[
-                        Icon(CupertinoIcons.sparkles,
-                            size: 14, color: Colors.purple.withOpacity(0.6)),
-                        Text(" 智慧分析偵測中...",
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.purple.withOpacity(0.8))),
-                      ],
-                    ],
-                  ),
+                  const Text("新增事項",
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                   const SizedBox(height: 10),
                   CupertinoTextField(
-                    placeholder: "",
+                    placeholder: "例如：每週一早上九點開會",
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: CupertinoColors.systemGrey6,
@@ -1076,17 +900,19 @@ class _HomeScreenState extends State<HomeScreen> {
                               context: context,
                               builder: (c) => CupertinoActionSheet(
                                 actions: [
-                                  ...categories.map(
-                                    (cat) => CupertinoActionSheetAction(
-                                      child: Text(cat),
-                                      onPressed: () {
-                                        setModalState(
-                                          () => selectedCategory = cat,
-                                        );
-                                        Navigator.pop(c);
-                                      },
-                                    ),
-                                  ).toList(),
+                                  ...categories
+                                      .map(
+                                        (cat) => CupertinoActionSheetAction(
+                                          child: Text(cat),
+                                          onPressed: () {
+                                            setModalState(
+                                              () => selectedCategory = cat,
+                                            );
+                                            Navigator.pop(c);
+                                          },
+                                        ),
+                                      )
+                                      .toList(),
                                   CupertinoActionSheetAction(
                                     child: const Text("新增類別..."),
                                     onPressed: () {
@@ -1110,28 +936,34 @@ class _HomeScreenState extends State<HomeScreen> {
                           }
                         },
                       ),
+                      // AI 按鈕替換為 "週期" 按鈕
                       _buildCircleBtn(
-                        CupertinoIcons.wand_stars,
-                        "AI 功能",
-                        "智慧分析",
-                        () async {
-                          if (currentTitle.isEmpty) return;
-
-                          setModalState(() {
-                            isAnalyzing = true;
-                          });
-
-                          await Future.delayed(
-                              const Duration(milliseconds: 1500));
-
-                          if (context.mounted) {
-                            analyzeAndSet(currentTitle, setModalState);
-                            setModalState(() {
-                              isAnalyzing = false;
-                            });
-                          }
+                        CupertinoIcons.repeat,
+                        "週期",
+                        selectedRecurrence,
+                        () {
+                          showCupertinoModalPopup(
+                            context: context,
+                            builder: (c) => CupertinoActionSheet(
+                              actions: ["不重複", "每天", "每週", "每月"]
+                                  .map((rec) => CupertinoActionSheetAction(
+                                        child: Text(rec),
+                                        onPressed: () {
+                                          setModalState(
+                                              () => selectedRecurrence = rec);
+                                          Navigator.pop(c);
+                                        },
+                                      ))
+                                  .toList(),
+                              cancelButton: CupertinoActionSheetAction(
+                                child: const Text("取消"),
+                                isDestructiveAction: true,
+                                onPressed: () => Navigator.pop(c),
+                              ),
+                            ),
+                          );
                         },
-                        color: Colors.purple,
+                        color: Colors.green,
                       ),
                     ],
                   ),
@@ -1149,6 +981,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           selectedCategory,
                           "Medium",
                           selectedDate,
+                          selectedRecurrence, // 傳入週期參數
                         );
                         Navigator.pop(context);
                       }
@@ -1226,6 +1059,134 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+// --- BUG FIX: Extracted Calendar Tab ---
+class _CalendarTab extends StatefulWidget {
+  final _HomeScreenState parentState;
+  final List<Task> tasks;
+
+  const _CalendarTab({required this.parentState, required this.tasks});
+
+  @override
+  _CalendarTabState createState() => _CalendarTabState();
+}
+
+class _CalendarTabState extends State<_CalendarTab> {
+  DateTime _selectedDay = DateTime.now();
+  DateTime _focusedDay = DateTime.now();
+
+  @override
+  Widget build(BuildContext context) {
+    List<Task> dailyTasks =
+        widget.tasks.where((t) => isSameDay(t.dueTime, _selectedDay)).toList();
+
+    return CupertinoPageScaffold(
+      navigationBar: const CupertinoNavigationBar(middle: Text('行事曆')),
+      child: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: CupertinoTheme.of(context).brightness == Brightness.dark
+                    ? CupertinoColors.darkBackgroundGray
+                    : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color:
+                        CupertinoTheme.of(context).brightness == Brightness.dark
+                            ? Colors.white.withOpacity(0.05)
+                            : Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: TableCalendar(
+                  locale: 'zh_TW',
+                  firstDay: DateTime.utc(2020, 1, 1),
+                  lastDay: DateTime.utc(2030, 12, 31),
+                  focusedDay: _focusedDay,
+                  calendarFormat: CalendarFormat.month,
+                  selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+                  onDaySelected: (selectedDay, focusedDay) {
+                    setState(() {
+                      _selectedDay = selectedDay;
+                      _focusedDay = focusedDay;
+                    });
+                  },
+                  eventLoader: (day) {
+                    return widget.tasks
+                        .where((task) => isSameDay(task.dueTime, day))
+                        .toList();
+                  },
+                  calendarStyle: const CalendarStyle(
+                    todayDecoration: BoxDecoration(
+                      color: CupertinoColors.activeBlue,
+                      shape: BoxShape.circle,
+                    ),
+                    selectedDecoration: BoxDecoration(
+                      color: CupertinoColors.systemRed,
+                      shape: BoxShape.circle,
+                    ),
+                    markerDecoration: BoxDecoration(
+                      color: CupertinoColors.systemGrey,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  headerStyle: const HeaderStyle(
+                    formatButtonVisible: false,
+                    titleCentered: true,
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color:
+                      CupertinoTheme.of(context).brightness == Brightness.dark
+                          ? CupertinoColors.darkBackgroundGray
+                          : CupertinoColors.white,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(30),
+                  ),
+                ),
+                child: ListView(
+                  padding: const EdgeInsets.all(20),
+                  children: [
+                    Text(
+                      "${DateFormat('M月d日', 'zh_TW').format(_selectedDay)} 待辦事項",
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    if (dailyTasks.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 20),
+                        child: Text(
+                          "今天沒有事項！",
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      )
+                    else
+                      ...dailyTasks
+                          .map((t) => widget.parentState._buildTaskItem(t)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

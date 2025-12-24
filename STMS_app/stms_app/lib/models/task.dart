@@ -8,6 +8,7 @@ class Task {
   String status;
   DateTime dueTime;
   String note;
+  String recurrence; // 新增：週期性規則
 
   Task({
     required this.id,
@@ -17,6 +18,7 @@ class Task {
     required this.status,
     required this.dueTime,
     this.note = "",
+    this.recurrence = "不重複", // 新增
   });
 
   // 把 Firebase 的資料轉成我們的 Task 物件
@@ -31,6 +33,7 @@ class Task {
       // Firebase 的時間是 Timestamp 格式，要轉回 DateTime
       dueTime: (data['dueTime'] as Timestamp).toDate(),
       note: data['note'] ?? '',
+      recurrence: data['recurrence'] ?? '不重複', // 新增
     );
   }
 
@@ -43,6 +46,7 @@ class Task {
       'status': status,
       'dueTime': Timestamp.fromDate(dueTime), // 轉成 Timestamp
       'note': note,
+      'recurrence': recurrence, // 新增
     };
   }
 }
