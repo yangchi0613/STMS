@@ -22,23 +22,19 @@ class _HomeScreenState extends State<HomeScreen> {
   int completedTaskCount = 0;
   List<String> categories = ["學校", "生活", "日常"];
   Timer? _timer;
-
-  // 用來記錄已經彈窗過的任務 ID，避免每5秒重複彈同一個
   final Set<String> _notifiedTasks = {};
 
   String get uid => FirebaseAuth.instance.currentUser!.uid;
-  CollectionReference get tasksCollection => FirebaseFirestore.instance
-      .collection('users')
-      .doc(uid)
-      .collection('tasks');
+  String? get userEmail => FirebaseAuth.instance.currentUser!.email;
+
+  // [修改] 改用全域集合 'all_tasks'
+  CollectionReference get tasksCollection =>
+      FirebaseFirestore.instance.collection('all_tasks');
 
   @override
   void initState() {
     super.initState();
-    // 進入首頁時，請求通知權限
     NotificationService.requestPermissions();
-
-    // 啟動計時器：每 5 秒檢查一次是否有任務過期
     _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
       if (mounted) {
         _checkDueTasks();
@@ -52,10 +48,12 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  // 檢查過期任務邏輯
   void _checkDueTasks() {
-    // 查詢狀態是 Pending (未完成) 的任務
+    if (userEmail == null) return;
+
+    // [修改] 查詢包含自己 Email 的任務
     tasksCollection
+        .where('members', arrayContains: userEmail)
         .where('status', isEqualTo: 'Pending')
         .get()
         .then((snapshot) {
@@ -64,24 +62,20 @@ class _HomeScreenState extends State<HomeScreen> {
       for (var doc in snapshot.docs) {
         Task task = Task.fromFirestore(doc);
 
-        // 條件：時間已過 (now > dueTime) 且 還沒在本次執行中通知過
         if (now.isAfter(task.dueTime) && !_notifiedTasks.contains(task.id)) {
           setState(() {
-            _notifiedTasks.add(task.id); // 加入清單，鎖住這個任務避免重複彈
+            _notifiedTasks.add(task.id);
           });
-
-          // 呼叫彈窗
           _showTimeoutDialog(task);
         }
       }
     });
   }
 
-  // 時間到彈窗 (iOS 風格)
   void _showTimeoutDialog(Task task) {
     showCupertinoDialog(
       context: context,
-      barrierDismissible: false, // 強制使用者一定要選一個
+      barrierDismissible: false,
       builder: (context) => CupertinoAlertDialog(
         title: const Column(
           children: [
@@ -99,22 +93,20 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         actions: [
-          // 按鈕 1: 繼續做 (延時)
           CupertinoDialogAction(
             isDefaultAction: true,
             child: const Text("繼續做 (延時)"),
             onPressed: () {
-              Navigator.pop(context); // 關閉彈窗
-              _rescheduleTask(task); // 開啟時間選擇器
+              Navigator.pop(context);
+              _rescheduleTask(task);
             },
           ),
-          // 按鈕 2: 已完成
           CupertinoDialogAction(
-            isDestructiveAction: true, // 紅色字體
+            isDestructiveAction: true,
             child: const Text("已完成"),
             onPressed: () {
-              deleteTask(task.id, completed: true); // 標記完成並刪除
-              Navigator.pop(context); // 關閉彈窗
+              deleteTask(task.id, completed: true);
+              Navigator.pop(context);
             },
           ),
         ],
@@ -122,13 +114,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 延時設定 (配合彈窗使用)
   void _rescheduleTask(Task task) {
-    // 預設時間：如果是過去的時間，就預設為現在+30分鐘，不然就保持原樣
     DateTime newDate = task.dueTime.isBefore(DateTime.now())
         ? DateTime.now().add(const Duration(minutes: 30))
         : task.dueTime;
-
     showCupertinoModalPopup(
       context: context,
       builder: (context) => Container(
@@ -136,7 +125,6 @@ class _HomeScreenState extends State<HomeScreen> {
         color: CupertinoColors.systemBackground.resolveFrom(context),
         child: Column(
           children: [
-            // 頂部工具列
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               color: CupertinoColors.systemGrey6.withValues(alpha: 0.5),
@@ -150,18 +138,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: const Text("確定延期"),
                     onPressed: () {
                       task.dueTime = newDate;
-                      updateTask(task); // 更新 Firebase + 重設通知
-
-                      // 移除已通知標記，這樣下次時間到還會再通知
+                      updateTask(task);
                       _notifiedTasks.remove(task.id);
-
                       Navigator.pop(context);
                     },
                   ),
                 ],
               ),
             ),
-            // 時間選擇器
             Expanded(
               child: CupertinoDatePicker(
                 initialDateTime: newDate,
@@ -176,9 +160,19 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 新增任務 + 設定通知
+  // [修改] 支援傳入多個 Email
   Future<void> addTask(String title, String category, String priority,
-      DateTime date, String recurrence) async {
+      DateTime date, String recurrence, List<String> sharedEmails) async {
+    if (userEmail == null) return;
+
+    // 建立成員名單：我自己 + 邀請的人
+    List<String> members = [userEmail!];
+    for (String email in sharedEmails) {
+      if (email.isNotEmpty && !members.contains(email)) {
+        members.add(email.trim());
+      }
+    }
+
     DocumentReference docRef = await tasksCollection.add({
       'title': title,
       'category': category,
@@ -186,7 +180,8 @@ class _HomeScreenState extends State<HomeScreen> {
       'status': 'Pending',
       'dueTime': Timestamp.fromDate(date),
       'note': '',
-      'recurrence': recurrence, // 新增週期欄位
+      'recurrence': recurrence,
+      'members': members, // [修改]
     });
 
     int notificationId = docRef.id.hashCode;
@@ -199,14 +194,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 刪除任務 + 取消通知
   Future<void> deleteTask(String taskId, {bool completed = false}) async {
     if (completed) {
-      //取得任務資料
       DocumentSnapshot doc = await tasksCollection.doc(taskId).get();
       if (doc.exists) {
         Task task = Task.fromFirestore(doc);
-
         if (task.recurrence != '不重複') {
           DateTime nextDueTime;
           switch (task.recurrence) {
@@ -223,9 +215,13 @@ class _HomeScreenState extends State<HomeScreen> {
             default:
               nextDueTime = task.dueTime;
           }
-          // 新增下一個任務
+
+          // [修改] 遞迴建立新任務時，要繼承原本的成員
+          List<String> others = List.from(task.members);
+          others.remove(userEmail); // 移除自己，因為 addTask 會自動加回去
+
           await addTask(task.title, task.category, task.priority, nextDueTime,
-              task.recurrence);
+              task.recurrence, others);
         }
       }
 
@@ -238,10 +234,8 @@ class _HomeScreenState extends State<HomeScreen> {
     await NotificationService.cancelNotification(taskId.hashCode);
   }
 
-  // 更新任務 + 重設通知
   Future<void> updateTask(Task task) async {
     await tasksCollection.doc(task.id).update(task.toMap());
-
     await NotificationService.cancelNotification(task.id.hashCode);
     await NotificationService.scheduleNotification(
       id: task.id.hashCode,
@@ -253,8 +247,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (userEmail == null) {
+      return const CupertinoPageScaffold(child: Center(child: Text("請先登入")));
+    }
+
     return StreamBuilder<QuerySnapshot>(
-      stream: tasksCollection.snapshots(),
+      // [修改] 查詢條件
+      stream: tasksCollection
+          .where('members', arrayContains: userEmail)
+          .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return const CupertinoPageScaffold(
@@ -288,8 +289,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           tabBuilder: (context, index) {
             if (index == 0) return _buildHomeTab(tasks);
-            if (index == 1)
+            if (index == 1) {
               return _CalendarTab(parentState: this, tasks: tasks);
+            }
             return _buildMoreTab(tasks);
           },
         );
@@ -420,6 +422,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildTaskItem(Task task) {
+    // [修改] 檢查是否共用
+    bool isShared = task.members.length > 1;
+
     return Dismissible(
       key: ValueKey(task.id),
       direction: DismissDirection.startToEnd,
@@ -490,14 +495,24 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      task.title,
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: CupertinoTheme.of(
-                          context,
-                        ).textTheme.textStyle.color,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          task.title,
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: CupertinoTheme.of(
+                              context,
+                            ).textTheme.textStyle.color,
+                          ),
+                        ),
+                        // [修改] 如果是共享任務，顯示圖示
+                        if (isShared) ...[
+                          const SizedBox(width: 6),
+                          const Icon(CupertinoIcons.person_2_fill,
+                              size: 14, color: CupertinoColors.activeBlue),
+                        ]
+                      ],
                     ),
                     Text(
                       DateFormat('M月d日 HH:mm', 'zh_TW').format(task.dueTime),
@@ -721,7 +736,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     double percentage =
                         tasks.isEmpty ? 0 : count / (tasks.length + 1);
                     double heightFactor = percentage == 0 ? 0.05 : percentage;
-
                     return Column(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
@@ -798,11 +812,16 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // [修改] 支援多選 Email 的彈窗
   void _showAddTaskModal(BuildContext context) {
     String currentTitle = "";
     DateTime selectedDate = DateTime.now();
     String selectedCategory = categories.isNotEmpty ? categories.first : "未分類";
-    String selectedRecurrence = "不重複"; // 用於儲存週期的狀態
+    String selectedRecurrence = "不重複";
+
+    // [新增] 多選 Email 變數
+    List<String> tempSharedEmails = [];
+    TextEditingController emailController = TextEditingController();
 
     showCupertinoModalPopup(
       context: context,
@@ -812,7 +831,7 @@ class _HomeScreenState extends State<HomeScreen> {
             final isDarkMode =
                 CupertinoTheme.of(context).brightness == Brightness.dark;
             return Container(
-              height: 480,
+              height: 600, // 高度調高
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: isDarkMode
@@ -853,7 +872,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       currentTitle = val;
                     },
                   ),
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 20),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
@@ -900,19 +919,17 @@ class _HomeScreenState extends State<HomeScreen> {
                               context: context,
                               builder: (c) => CupertinoActionSheet(
                                 actions: [
-                                  ...categories
-                                      .map(
-                                        (cat) => CupertinoActionSheetAction(
-                                          child: Text(cat),
-                                          onPressed: () {
-                                            setModalState(
-                                              () => selectedCategory = cat,
-                                            );
-                                            Navigator.pop(c);
-                                          },
-                                        ),
-                                      )
-                                      .toList(),
+                                  ...categories.map(
+                                    (cat) => CupertinoActionSheetAction(
+                                      child: Text(cat),
+                                      onPressed: () {
+                                        setModalState(
+                                          () => selectedCategory = cat,
+                                        );
+                                        Navigator.pop(c);
+                                      },
+                                    ),
+                                  ),
                                   CupertinoActionSheetAction(
                                     child: const Text("新增類別..."),
                                     onPressed: () {
@@ -927,16 +944,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                 ],
                                 cancelButton: CupertinoActionSheetAction(
-                                  child: const Text("取消"),
                                   isDestructiveAction: true,
                                   onPressed: () => Navigator.pop(c),
+                                  child: const Text("取消"),
                                 ),
                               ),
                             );
                           }
                         },
                       ),
-                      // AI 按鈕替換為 "週期" 按鈕
                       _buildCircleBtn(
                         CupertinoIcons.repeat,
                         "週期",
@@ -956,9 +972,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                       ))
                                   .toList(),
                               cancelButton: CupertinoActionSheetAction(
-                                child: const Text("取消"),
                                 isDestructiveAction: true,
                                 onPressed: () => Navigator.pop(c),
+                                child: const Text("取消"),
                               ),
                             ),
                           );
@@ -967,7 +983,95 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ],
                   ),
+
                   const Spacer(),
+
+                  // --- [新增] 共享成員多選區塊 ---
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("共享對象",
+                          style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey,
+                              fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: CupertinoTextField(
+                              controller: emailController,
+                              placeholder: "輸入 Gmail",
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: CupertinoColors.systemGrey6,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          CupertinoButton(
+                            padding: EdgeInsets.zero,
+                            child: const Icon(CupertinoIcons.add_circled_solid,
+                                size: 28),
+                            onPressed: () {
+                              if (emailController.text.contains('@')) {
+                                setModalState(() {
+                                  tempSharedEmails
+                                      .add(emailController.text.trim());
+                                  emailController.clear();
+                                });
+                              }
+                            },
+                          )
+                        ],
+                      ),
+                      if (tempSharedEmails.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: tempSharedEmails.map((email) {
+                              return Container(
+                                padding: const EdgeInsets.fromLTRB(10, 5, 5, 5),
+                                decoration: BoxDecoration(
+                                  color: CupertinoColors.activeBlue
+                                      .withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                      color: CupertinoColors.activeBlue
+                                          .withValues(alpha: 0.3)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(email,
+                                        style: const TextStyle(
+                                            fontSize: 12,
+                                            color: CupertinoColors.activeBlue)),
+                                    const SizedBox(width: 5),
+                                    GestureDetector(
+                                      onTap: () {
+                                        setModalState(() {
+                                          tempSharedEmails.remove(email);
+                                        });
+                                      },
+                                      child: const Icon(
+                                          CupertinoIcons.xmark_circle_fill,
+                                          size: 18,
+                                          color: CupertinoColors.activeBlue),
+                                    )
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
                   CupertinoButton.filled(
                     borderRadius: BorderRadius.circular(15),
                     child: const Text(
@@ -976,12 +1080,19 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     onPressed: () {
                       if (currentTitle.isNotEmpty) {
+                        // 如果輸入框還有字沒按+，自動加進去
+                        if (emailController.text.isNotEmpty &&
+                            emailController.text.contains('@')) {
+                          tempSharedEmails.add(emailController.text.trim());
+                        }
+
                         addTask(
                           currentTitle,
                           selectedCategory,
                           "Medium",
                           selectedDate,
-                          selectedRecurrence, // 傳入週期參數
+                          selectedRecurrence,
+                          tempSharedEmails, // [修改] 傳入 List
                         );
                         Navigator.pop(context);
                       }
@@ -1064,7 +1175,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// --- BUG FIX: Extracted Calendar Tab ---
+// --- Calendar Tab ---
 class _CalendarTab extends StatefulWidget {
   final _HomeScreenState parentState;
   final List<Task> tasks;
@@ -1078,12 +1189,10 @@ class _CalendarTab extends StatefulWidget {
 class _CalendarTabState extends State<_CalendarTab> {
   DateTime _selectedDay = DateTime.now();
   DateTime _focusedDay = DateTime.now();
-
   @override
   Widget build(BuildContext context) {
     List<Task> dailyTasks =
         widget.tasks.where((t) => isSameDay(t.dueTime, _selectedDay)).toList();
-
     return CupertinoPageScaffold(
       navigationBar: const CupertinoNavigationBar(middle: Text('行事曆')),
       child: SafeArea(

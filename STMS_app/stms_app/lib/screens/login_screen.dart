@@ -1,5 +1,4 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -14,7 +13,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
 
   bool _isLoading = false;
 
@@ -78,7 +78,7 @@ class _LoginScreenState extends State<LoginScreen> {
           password: password,
         );
         if (mounted && Navigator.canPop(context)) {
-           Navigator.pop(context);
+          Navigator.pop(context);
         }
       } else {
         UserCredential userCredential =
@@ -92,7 +92,7 @@ class _LoginScreenState extends State<LoginScreen> {
           await userCredential.user!.reload();
         }
         if (mounted && Navigator.canPop(context)) {
-           Navigator.pop(context);
+          Navigator.pop(context);
         }
       }
     } on FirebaseAuthException catch (e) {
@@ -174,9 +174,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   groupValue: _selectedSegment,
                 ),
               ),
-
               const SizedBox(height: 32),
-
               if (isRegisterMode) ...[
                 _buildTextField(
                   controller: _usernameController,
@@ -184,21 +182,17 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 16),
               ],
-
               _buildTextField(
                 controller: _emailController,
                 placeholder: '電子郵件',
                 keyboardType: TextInputType.emailAddress,
               ),
-
               const SizedBox(height: 16),
-
               _buildTextField(
                 controller: _passwordController,
                 placeholder: '密碼',
                 obscureText: true,
               ),
-
               if (isRegisterMode) ...[
                 const SizedBox(height: 16),
                 _buildTextField(
@@ -207,9 +201,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   obscureText: true,
                 ),
               ],
-
               const SizedBox(height: 32),
-
               if (_isLoading)
                 const CupertinoActivityIndicator()
               else
@@ -269,24 +261,25 @@ class _LoginScreenState extends State<LoginScreen> {
                   _showErrorDialog('請輸入電子郵件');
                   return;
                 }
-                
+
                 // 關閉對話框
                 Navigator.of(context).pop();
 
                 setState(() => _isLoading = true);
                 try {
-                  await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-                   _showSuccessDialog('重設密碼的郵件已寄出，請檢查您的信箱。');
+                  await FirebaseAuth.instance
+                      .sendPasswordResetEmail(email: email);
+                  _showSuccessDialog('重設密碼的郵件已寄出，請檢查您的信箱。');
                 } on FirebaseAuthException catch (e) {
                   String errorMessage = '操作失敗';
                   if (e.code == 'user-not-found' || e.code == 'invalid-email') {
                     errorMessage = '找不到與此電子郵件相關聯的帳號';
                   }
                   _showErrorDialog(errorMessage);
-                } catch(e) {
+                } catch (e) {
                   _showErrorDialog('發生未知錯誤');
                 } finally {
-                   if (mounted) {
+                  if (mounted) {
                     setState(() => _isLoading = false);
                   }
                 }
@@ -297,7 +290,8 @@ class _LoginScreenState extends State<LoginScreen> {
       },
     );
   }
-    void _showSuccessDialog(String message) {
+
+  void _showSuccessDialog(String message) {
     showCupertinoDialog(
       context: context,
       builder: (ctx) => CupertinoAlertDialog(

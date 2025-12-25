@@ -8,7 +8,8 @@ class Task {
   String status;
   DateTime dueTime;
   String note;
-  String recurrence; // 新增：週期性規則
+  String recurrence;
+  List<String> members; // [修改] 儲存所有共享成員的 Email
 
   Task({
     required this.id,
@@ -18,35 +19,36 @@ class Task {
     required this.status,
     required this.dueTime,
     this.note = "",
-    this.recurrence = "不重複", // 新增
+    this.recurrence = "不重複",
+    required this.members, // [修改]
   });
 
-  // 把 Firebase 的資料轉成我們的 Task 物件
   factory Task.fromFirestore(DocumentSnapshot doc) {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     return Task(
-      id: doc.id, // 使用 Firebase 產生的亂碼 ID
+      id: doc.id,
       title: data['title'] ?? '',
       category: data['category'] ?? '未分類',
       priority: data['priority'] ?? 'Medium',
       status: data['status'] ?? 'Pending',
-      // Firebase 的時間是 Timestamp 格式，要轉回 DateTime
       dueTime: (data['dueTime'] as Timestamp).toDate(),
       note: data['note'] ?? '',
-      recurrence: data['recurrence'] ?? '不重複', // 新增
+      recurrence: data['recurrence'] ?? '不重複',
+      // [修改] 安全地轉換 List<dynamic> 為 List<String>
+      members: List<String>.from(data['members'] ?? []),
     );
   }
 
-  // 把Task物件轉成Firebase 看得懂的格式
   Map<String, dynamic> toMap() {
     return {
       'title': title,
       'category': category,
       'priority': priority,
       'status': status,
-      'dueTime': Timestamp.fromDate(dueTime), // 轉成 Timestamp
+      'dueTime': Timestamp.fromDate(dueTime),
       'note': note,
-      'recurrence': recurrence, // 新增
+      'recurrence': recurrence,
+      'members': members, // [修改]
     };
   }
 }

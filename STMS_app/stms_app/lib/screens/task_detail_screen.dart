@@ -42,26 +42,22 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         setState(() {
           _updateTimeLeft();
         });
-        // [重點] 每秒檢查是否時間到
         _checkIfTimeUp();
       }
     });
   }
 
-  // [重點] 檢查時間到並觸發彈窗
   void _checkIfTimeUp() {
-    // 如果時間是負的 (已過期) 且 還沒彈過窗
     if (_timeLeft.isNegative && !_hasAlerted) {
-      _hasAlerted = true; // 鎖住，避免一秒彈一次
+      _hasAlerted = true;
       _showDetailTimeoutDialog();
     }
   }
 
-  // [重點] 詳情頁的彈窗
   void _showDetailTimeoutDialog() {
     showCupertinoDialog(
       context: context,
-      barrierDismissible: false, // 禁止點旁邊關閉
+      barrierDismissible: false,
       builder: (context) => CupertinoAlertDialog(
         title: const Column(
           children: [
@@ -79,22 +75,20 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           ),
         ),
         actions: [
-          // 選項 A：延時
           CupertinoDialogAction(
             child: const Text("延長時間"),
             onPressed: () {
               Navigator.pop(context);
-              _showDatePicker(); // 直接打開下方的時間選擇器
+              _showDatePicker();
             },
           ),
-          // 選項 B：已完成
           CupertinoDialogAction(
             isDestructiveAction: true,
             child: const Text("標記完成"),
             onPressed: () {
-              widget.onDelete(); // 呼叫上一層傳進來的刪除函式
-              Navigator.pop(context); // 關閉彈窗
-              Navigator.pop(context); // 關閉詳情頁，回到首頁
+              widget.onDelete();
+              Navigator.pop(context);
+              Navigator.pop(context);
             },
           ),
         ],
@@ -149,7 +143,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                   onDateTimeChanged: (DateTime newDateTime) {
                     setState(() {
                       _currentDueTime = newDateTime;
-                      _hasAlerted = false; // 重置警報狀態，下次時間到會再彈
+                      _hasAlerted = false;
                     });
                   },
                 ),
@@ -170,10 +164,86 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     return "0$n";
   }
 
+  // [修改] 新增顯示共享成員的 Widget
+  Widget _buildMemberSection(bool isDarkMode) {
+    if (widget.task.members.length <= 1) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 20),
+        Row(
+          children: [
+            const Icon(CupertinoIcons.person_2_fill,
+                size: 16, color: CupertinoColors.activeBlue),
+            const SizedBox(width: 6),
+            Text(
+              "共享成員",
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: isDarkMode ? Colors.white70 : Colors.black54,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8.0,
+          runSpacing: 8.0,
+          children: widget.task.members.map((email) {
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: isDarkMode
+                    ? CupertinoColors.systemGrey.withOpacity(0.3)
+                    : CupertinoColors.systemGrey6,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isDarkMode ? Colors.white12 : Colors.black12,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 20,
+                    height: 20,
+                    alignment: Alignment.center,
+                    decoration: const BoxDecoration(
+                      color: CupertinoColors.activeBlue,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      email.isNotEmpty ? email[0].toUpperCase() : "?",
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    email,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDarkMode ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isDarkMode =
-        CupertinoTheme.of(context).brightness == Brightness.dark;
+    final isDarkMode = CupertinoTheme.of(context).brightness == Brightness.dark;
 
     String days = _timeLeft.inDays > 0 ? _twoDigits(_timeLeft.inDays) : "00";
     String hours = _twoDigits(_timeLeft.inHours.remainder(24));
@@ -274,6 +344,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                             ),
                           ],
                         ),
+
+                        // [修改] 插入共享成員顯示區塊
+                        _buildMemberSection(isDarkMode),
+
                         const SizedBox(height: 25),
                         const Text("距離結束還有",
                             style: TextStyle(color: Colors.grey, fontSize: 12)),
